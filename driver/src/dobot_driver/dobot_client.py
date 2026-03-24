@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Any
 
-from dobot_api import (
+from .dobot_api import (
     DobotApiDashboard,
     DobotApiMove,
 )
@@ -150,4 +150,6 @@ class DobotDeviceClient:
     def DOExecute(self, index: int, status: int) -> str | None:
         if self.simulation:
             return f"simulation:DOExecute({index},{status})"
-        return self.dashboard_api.DOExecute(index, status) if self.dashboard_api is not None else None
+        if self.dashboard_api is None:
+            raise RuntimeError("dashboard_api is not connected")
+        return self.dashboard_api.DOExecute(index, status)

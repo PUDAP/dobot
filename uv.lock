@@ -9,6 +9,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "dobot-driver",
     "dobot-edge",
 ]
 
@@ -113,12 +114,26 @@ wheels = [
 ]
 
 [[package]]
+name = "dobot-driver"
+version = "0.1.0"
+source = { editable = "driver" }
+dependencies = [
+    { name = "ipykernel" },
+    { name = "numpy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "ipykernel", specifier = ">=7.2.0" },
+    { name = "numpy", specifier = ">=2.4.3" },
+]
+
+[[package]]
 name = "dobot-edge"
 version = "0.1.0"
 source = { virtual = "edge" }
 dependencies = [
-    { name = "ipykernel" },
-    { name = "numpy" },
+    { name = "dobot-driver" },
     { name = "puda-comms" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -128,8 +143,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ipykernel", specifier = ">=7.2.0" },
-    { name = "numpy", specifier = ">=2.4.3" },
+    { name = "dobot-driver", editable = "driver" },
     { name = "puda-comms", specifier = "==0.0.10" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pydantic-settings", specifier = ">=2.12.0" },

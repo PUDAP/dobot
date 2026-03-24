@@ -1,10 +1,16 @@
-import socket
-import threading
-from tkinter import Text, END
-import datetime
-import numpy as np
 import os
 import json
+from typing import Any
+import threading
+import datetime
+import socket
+import numpy as np
+
+try:
+    from tkinter import Text, END
+except ModuleNotFoundError:
+    Text = Any
+    END = "end"
 
 alarmControllerFile = "files/alarm_controller.json"
 alarmServoFile = "files/alarm_servo.json"
@@ -779,4 +785,3 @@ class DobotApiMove(DobotApi):
     def SyncAll(self):
         string = "SyncAll()"
         return self.sendRecvMsg(string)
-

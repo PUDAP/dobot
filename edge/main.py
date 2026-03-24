@@ -10,7 +10,7 @@ import sys
 import time
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from puda_comms import EdgeNatsClient, EdgeRunner
-from m1pro import M1ProArm
+from dobot_driver import M1Pro
 
 
 # Configure logging
@@ -54,7 +54,7 @@ async def main():
     logger.info("Full config: %s", config.model_dump())
 
     logger.info("Initializing dobot machine driver")
-    driver = M1ProArm(dobot_ip=config.dobot_ip)
+    driver = M1Pro(dobot_ip=config.dobot_ip)
     logger.info("Dobot machine initialized successfully")
 
     logger.info("Connecting to NATS at %s", config.nats_servers)

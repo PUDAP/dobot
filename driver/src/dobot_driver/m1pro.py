@@ -4,7 +4,7 @@ import logging
 import math
 from typing import Any, Mapping, Sequence
 
-from dobot_client import (
+from .dobot_client import (
     CartesianPose,
     DobotDeviceClient,
     NUMBER_PATTERN,
@@ -15,16 +15,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_HOME_POSITION = [[300, 0, 200], [-33, 0, 0]]
 DEFAULT_CALIBRATED_OFFSET = [[-374, 496.75, 254.2], [-89.11611149, 0, 0]]
 DEFAULT_TOOL_OFFSET = [[0, 0, -232], [122.11611149, 0, 0]]
-DEFAULT_SAVED_POSITIONS = {
-    "zone1_jar_tray_1_center": [[88.7, -29, 60], [57, 0, 0]],
-    "zone1_jar_tray_2_center": [[88.7, 122, 60], [57, 0, 0]],
-    "zone1_jar_tray_4_center": [[-13.4, 122, 60], [57, 0, 0]],
-    "zone2_jar_tray_center": [[636.4, 246.7, 60], [-33, 0, 0]],
-}
 
-
-class M1ProArm:
+class M1Pro:
     """Standalone M1 Pro controller using Dobot's TCP/IP API directly."""
+
+    # Public API
 
     def __init__(
         self,
@@ -35,13 +30,27 @@ class M1ProArm:
         scale: float = 1.0,
         tool_offset: Any = DEFAULT_TOOL_OFFSET,
         safe_height: float = 240.0,
-        saved_positions: Mapping[str, Any] | None = None,
         home_waypoints: Sequence[Any] | None = None,
         timeout: float = 10.0,
         verbose: bool = True,
         simulation: bool = False,
         auto_connect: bool = True,
     ) -> None:
+        """Initialize an M1 Pro controller.
+
+        Args:
+            dobot_ip (required): IP address or hostname for the Dobot controller.
+            home_position (optional): Robot-frame pose used as the configured home position.
+            calibrated_offset (optional): Work-frame calibration offset applied during frame transforms.
+            scale (optional): Scalar factor between work coordinates and robot coordinates.
+            tool_offset (optional): Tool pose offset applied between tool and robot frames.
+            safe_height (optional): Z height used for clearance moves before lateral travel.
+            home_waypoints (optional): Intermediate robot-frame waypoints visited before the final home pose.
+            timeout (optional): Socket timeout in seconds for device communication.
+            verbose (optional): Whether to enable debug-level logging for this controller.
+            simulation (optional): Whether to use the simulated device client instead of real hardware I/O.
+            auto_connect (optional): Whether to connect to the device immediately during construction.
+        """
         self.host = dobot_ip
         self.verbose = verbose
         self.simulation = simulation
@@ -50,7 +59,6 @@ class M1ProArm:
         self.home_position = self._coerce_pose(home_position, default_r=-33.0)
         self.calibrated_offset = self._coerce_pose(calibrated_offset)
         self.tool_offset = self._coerce_pose(tool_offset)
-        self.saved_positions = dict(DEFAULT_SAVED_POSITIONS if saved_positions is None else saved_positions)
         self.home_waypoints = [
             self._coerce_pose(waypoint, default_r=self.home_position.r) for waypoint in (home_waypoints or [])
         ]
@@ -69,33 +77,76 @@ class M1ProArm:
         if auto_connect:
             self._connect()
 
-    def _connect(self) -> None:
-        self.device.connect()
-        self.set_speed_factor(self._speed_factor)
+    def __enter__(self) -> "M1Pro":
+        """Connect the device for use in a context manager.
 
-    def _disconnect(self) -> None:
-        self.device.disconnect()
+        Args:
+            None.
 
-    def open_gripper(self) -> str | None:
-        """Open the gripper (DOExecute index=1, status=0)."""
+        Returns:
+            M1Pro: The connected controller instance.
+        """
+        self._connect()
+        return self
+
+    def open_gripper(self) -> str:
+        """Open the gripper.
+
+        Args:
+            None.
+
+        Returns:
+            str: The raw device response.
+
+        Raises:
+            RuntimeError: If the dashboard API is not connected.
+        """
         self._logger.debug("Opening gripper")
         return self.device.DOExecute(1, 1)
 
-    def close_gripper(self) -> str | None:
-        """Close the gripper (DOExecute index=1, status=1)."""
+    def close_gripper(self) -> str:
+        """Close the gripper.
+
+        Args:
+            None.
+
+        Returns:
+            str: The raw device response.
+
+        Raises:
+            RuntimeError: If the dashboard API is not connected.
+        """
         self._logger.debug("Closing gripper")
         return self.device.DOExecute(1, 0)
 
     def reset(self) -> None:
+        """Reset the underlying device controller.
+
+        Args:
+            None.
+        """
         self.device.reset()
 
     def set_speed_factor(self, speed_factor: float) -> None:
+        """Set the motion speed scaling factor.
+
+        Args:
+            speed_factor (required): Motion speed multiplier in the range `(0.0, 1.0]`.
+        """
         if not 0.0 < speed_factor <= 1.0:
             raise ValueError("speed_factor must be in the range (0.0, 1.0].")
         self._speed_factor = float(speed_factor)
         self.device.SpeedFactor(max(1, min(100, int(round(speed_factor * 100)))))
 
     def get_pose(self, *, frame: str = "robot") -> CartesianPose:
+        """Get the current Cartesian pose.
+
+        Args:
+            frame (optional): Coordinate frame for the returned pose. Use `"robot"` or `"work"`.
+
+        Returns:
+            CartesianPose: The current pose in the requested frame.
+        """
         robot_pose = self._parse_pose_response(self.device.GetPose())
         if frame == "robot":
             return robot_pose
@@ -104,49 +155,20 @@ class M1ProArm:
         raise ValueError("frame must be either 'robot' or 'work'.")
 
     def get_joint_angles(self) -> tuple[float, float, float, float, float, float]:
+        """Get the current robot joint angles.
+
+        Args:
+            None.
+
+        Returns:
+            tuple[float, float, float, float, float, float]: The six reported joint angles.
+        """
         values = self._parse_numeric_response(self.device.GetAngle(), minimum=6, take_last=6)
         return tuple(values[-6:])  # type: ignore[return-value]
 
-    def preview_target(
-        self,
-        target: str | Mapping[str, float] | Sequence[Any] | CartesianPose,
-        *,
-        frame: str = "robot",
-    ) -> dict[str, Any]:
-        """Preview how an input target resolves into raw robot coordinates."""
-        resolved_target = self.saved_positions[target] if isinstance(target, str) else target
-        input_pose = self._coerce_pose(
-            resolved_target,
-            default_r=self.get_pose(frame=frame).r if self.device.connected else self.home_position.r,
-        )
-        robot_pose = input_pose if frame == "robot" else self._work_tool_to_robot(input_pose)
-        return {
-            "frame": frame,
-            "input_pose": input_pose,
-            "robot_pose": robot_pose,
-            "within_workspace": self._within_workspace(robot_pose),
-        }
-
-    def _move(
-        self,
-        target: str | Mapping[str, float] | Sequence[Any] | CartesianPose,
-        *,
-        frame: str = "robot",
-        speed_factor: float | None = None,
-        blocking: bool = True,
-    ) -> CartesianPose:
-        robot_target = self._resolve_robot_target(target, frame=frame)
-        if speed_factor is not None:
-            self.set_speed_factor(speed_factor)
-        self._logger.debug("Moving to %s in %s frame", robot_target, frame)
-        self.device.MovJ(*robot_target.as_tuple())
-        if blocking:
-            self.device.Sync()
-        return robot_target
-
     def safe_move(
         self,
-        target: str | Mapping[str, float] | Sequence[Any] | CartesianPose,
+        target: Mapping[str, float] | Sequence[Any] | CartesianPose,
         *,
         frame: str = "robot",
         speed_factor_lateral: float | None = None,
@@ -154,6 +176,19 @@ class M1ProArm:
         speed_factor_down: float | None = None,
         blocking: bool = True,
     ) -> CartesianPose:
+        """Move to a target pose using a vertical-lateral-vertical path.
+
+        Args:
+            target (required): Destination pose as a mapping, sequence, or `CartesianPose`.
+            frame (optional): Coordinate frame for `target`. Use `"robot"` or `"work"`.
+            speed_factor_lateral (optional): Speed scaling used for the horizontal travel segment.
+            speed_factor_up (optional): Speed scaling used for the initial upward move.
+            speed_factor_down (optional): Speed scaling used for the final downward move.
+            blocking (optional): Whether to wait for each move segment to complete before returning.
+
+        Returns:
+            CartesianPose: The resolved destination in robot coordinates.
+        """
         robot_target = self._resolve_robot_target(target, frame=frame)
         current = self.get_pose(frame="robot")
         travel_z = max(self.safe_height, current.z, robot_target.z)
@@ -183,7 +218,57 @@ class M1ProArm:
 
         return robot_target
 
-    def move_to_safe_height(self, *, speed_factor: float | None = None) -> CartesianPose:
+    def home(self, *, speed_factor: float | None = None) -> CartesianPose:
+        """Move the robot to its configured home pose.
+
+        Args:
+            speed_factor (optional): Speed scaling applied to the safe-height move, any home waypoints, and the final home move.
+
+        Returns:
+            CartesianPose: The final home pose in robot coordinates.
+        """
+        self._move_to_safe_height(speed_factor=speed_factor)
+        for waypoint in self.home_waypoints:
+            self._move(waypoint, frame="robot", speed_factor=speed_factor)
+        return self._move(self.home_position, frame="robot", speed_factor=speed_factor)
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        """Disconnect the device when leaving a context manager.
+
+        Args:
+            exc_type (optional): Exception type raised inside the `with` block, if any.
+            exc (optional): Exception instance raised inside the `with` block, if any.
+            tb (optional): Traceback associated with the exception, if any.
+        """
+        self._disconnect()
+
+    # Private helpers
+
+    def _connect(self) -> None:
+        self.device.connect()
+        self.set_speed_factor(self._speed_factor)
+
+    def _disconnect(self) -> None:
+        self.device.disconnect()
+
+    def _move(
+        self,
+        target: Mapping[str, float] | Sequence[Any] | CartesianPose,
+        *,
+        frame: str = "robot",
+        speed_factor: float | None = None,
+        blocking: bool = True,
+    ) -> CartesianPose:
+        robot_target = self._resolve_robot_target(target, frame=frame)
+        if speed_factor is not None:
+            self.set_speed_factor(speed_factor)
+        self._logger.debug("Moving to %s in %s frame", robot_target, frame)
+        self.device.MovJ(*robot_target.as_tuple())
+        if blocking:
+            self.device.Sync()
+        return robot_target
+
+    def _move_to_safe_height(self, *, speed_factor: float | None = None) -> CartesianPose:
         current = self.get_pose(frame="robot")
         if current.z >= self.safe_height:
             return current
@@ -193,31 +278,12 @@ class M1ProArm:
             speed_factor=speed_factor,
         )
 
-    def home(self, *, speed_factor: float | None = None) -> CartesianPose:
-        self.move_to_safe_height(speed_factor=speed_factor)
-        for waypoint in self.home_waypoints:
-            self._move(waypoint, frame="robot", speed_factor=speed_factor)
-        return self._move(self.home_position, frame="robot", speed_factor=speed_factor)
-
-    def __enter__(self) -> "M1ProArm":
-        self._connect()
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        self._disconnect()
-
     def _resolve_robot_target(
         self,
-        target: str | Mapping[str, float] | Sequence[Any] | CartesianPose,
+        target: Mapping[str, float] | Sequence[Any] | CartesianPose,
         *,
         frame: str,
     ) -> CartesianPose:
-        target_name = target if isinstance(target, str) else None
-        if isinstance(target, str):
-            if target not in self.saved_positions:
-                raise KeyError(f"Unknown saved position: {target}")
-            target = self.saved_positions[target]
-
         default_r = self.get_pose(frame=frame).r if self.device.connected else self.home_position.r
         pose = self._coerce_pose(target, default_r=default_r)
         if frame == "robot":
@@ -226,15 +292,7 @@ class M1ProArm:
             robot_pose = self._work_tool_to_robot(pose)
         else:
             raise ValueError("frame must be either 'robot' or 'work'.")
-        try:
-            self._validate_robot_pose(robot_pose)
-        except ValueError as exc:
-            if target_name is not None and frame == "robot":
-                raise ValueError(
-                    f"{exc} Named saved positions like '{target_name}' are usually configured in work coordinates. "
-                    "Use frame='work' unless the saved value is already a raw robot pose."
-                ) from exc
-            raise
+        self._validate_robot_pose(robot_pose)
         return robot_pose
 
     def _work_tool_to_robot(self, work_tool_pose: CartesianPose) -> CartesianPose:
@@ -383,7 +441,3 @@ class M1ProArm:
     def _parse_pose_response(cls, payload: str | None) -> CartesianPose:
         values = cls._parse_numeric_response(payload, minimum=6, take_last=6)
         return CartesianPose(values[0], values[1], values[2], values[3])
-
-
-class M1ProTemp(M1ProArm):
-    """Backward-compatible alias for the old edge wrapper name."""
