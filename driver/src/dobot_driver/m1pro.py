@@ -32,7 +32,7 @@ class M1Pro:
         safe_height: float = 240.0,
         home_waypoints: Sequence[Any] | None = None,
         timeout: float = 10.0,
-        verbose: bool = True,
+        verbose: bool = False,
         simulation: bool = False,
         auto_connect: bool = True,
     ) -> None:
@@ -245,11 +245,32 @@ class M1Pro:
         Returns:
             Mapping[str, float]: The final lifted pose as a mapping.
         """
-        pick_pose = self._move(position, frame="robot")
-        self.set_speed_factor(0.05)
-        lifted_pose = CartesianPose(pick_pose.x, pick_pose.y, pick_pose.z + 30.0, pick_pose.r)
-        final_pose = self._move(lifted_pose, frame="robot")
+        pick_pose = self.safe_move(position, frame="robot")
+        self.open_gripper()
+       
+        lifted_pose = CartesianPose(pick_pose.x, pick_pose.y, pick_pose.z - 30.0, pick_pose.r)
+        final_pose = self._move(lifted_pose, frame="robot", speed_factor=0.05)
         self.close_gripper()
+        
+        return final_pose
+
+    def place_to(
+        self,
+        *,
+        position: Mapping[str, float],
+    ) -> Mapping[str, float]:
+        """Safe-move above a place position, descend slowly, and open the gripper.
+
+        Args:
+            position (required): Place pose as a mapping
+
+        Returns:
+            Mapping[str, float]: The final placed pose as a mapping.
+        """
+        above_pose = self.safe_move(position, frame="robot")
+        target_pose = CartesianPose(above_pose.x, above_pose.y, above_pose.z - 30.0, above_pose.r)
+        final_pose = self._move(target_pose, frame="robot", speed_factor=0.05)
+        self.open_gripper()
         return final_pose
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -281,11 +302,14 @@ class M1Pro:
     ) -> CartesianPose:
         robot_target = self._resolve_robot_target(target, frame=frame)
         if speed_factor is not None:
+            original_speed = self._speed_factor
             self.set_speed_factor(speed_factor)
         self._logger.debug("Moving to %s in %s frame", robot_target, frame)
         self.device.MovJ(*robot_target.as_tuple())
         if blocking:
             self.device.Sync()
+        if speed_factor is not None:
+            self.set_speed_factor(original_speed)
         return robot_target
 
     def _move_to_safe_height(self, *, speed_factor: float | None = None) -> CartesianPose:
