@@ -232,6 +232,26 @@ class M1Pro:
             self._move(waypoint, frame="robot", speed_factor=speed_factor)
         return self._move(self.home_position, frame="robot", speed_factor=speed_factor)
 
+    def pick_from(
+        self,
+        *,
+        position: Mapping[str, float],
+    ) -> Mapping[str, float]:
+        """Move to a pick position, lift 30 mm, and close the gripper.
+
+        Args:
+            position (required): Pick pose as a mapping
+
+        Returns:
+            Mapping[str, float]: The final lifted pose as a mapping.
+        """
+        pick_pose = self._move(position, frame="robot")
+        self.set_speed_factor(0.05)
+        lifted_pose = CartesianPose(pick_pose.x, pick_pose.y, pick_pose.z + 30.0, pick_pose.r)
+        final_pose = self._move(lifted_pose, frame="robot")
+        self.close_gripper()
+        return final_pose
+
     def __exit__(self, exc_type, exc, tb) -> None:
         """Disconnect the device when leaving a context manager.
 
