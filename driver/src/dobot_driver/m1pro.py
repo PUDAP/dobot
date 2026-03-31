@@ -32,9 +32,6 @@ class M1Pro:
         safe_height: float = 240.0,
         home_waypoints: Sequence[Any] | None = None,
         timeout: float = 10.0,
-        verbose: bool = False,
-        simulation: bool = False,
-        auto_connect: bool = True,
     ) -> None:
         """Initialize an M1 Pro controller.
 
@@ -47,9 +44,6 @@ class M1Pro:
             safe_height (optional): Z height used for clearance moves before lateral travel.
             home_waypoints (optional): Intermediate robot-frame waypoints visited before the final home pose.
             timeout (optional): Socket timeout in seconds for device communication.
-            verbose (optional): Whether to enable debug-level logging for this controller.
-            simulation (optional): Whether to use the simulated device client instead of real hardware I/O.
-            auto_connect (optional): Whether to connect to the device immediately during construction.
         """
         self._scale = float(scale)
         self._safe_height = float(safe_height)
@@ -60,19 +54,14 @@ class M1Pro:
             self._coerce_pose(waypoint, default_r=self._home_position.r) for waypoint in (home_waypoints or [])
         ]
         self._logger = logger.getChild(self.__class__.__name__)
-        if verbose:
-            self._logger.setLevel(logging.DEBUG)
+        self._logger.setLevel(logging.DEBUG)
         self._device = DobotDeviceClient(
             dobot_ip,
             timeout=timeout,
-            simulation=simulation,
-            verbose=verbose,
         )
-        self._device.set_sim_pose(self._home_position)
         self._speed_factor = 0.2
         self._validate_robot_pose(self._home_position)
-        if auto_connect:
-            self._connect()
+        self._connect()
 
     def __enter__(self) -> "M1Pro":
         """Connect the device for use in a context manager.

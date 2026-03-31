@@ -41,12 +41,10 @@ class DobotDeviceClient:
         *,
         timeout: float = 10.0,
         simulation: bool = False,
-        verbose: bool = False,
     ) -> None:
         self.host = host
         self.timeout = timeout
         self.simulation = simulation
-        self.verbose = verbose
         self.dashboard_api: DobotApiDashboard | None = None
         self.move_api: DobotApiMove | None = None
         self.connected = False
