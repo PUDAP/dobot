@@ -19,7 +19,7 @@ NUMBER_PATTERN = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
 
 
 @dataclass(frozen=True)
-class CartesianPose:
+class PoseXYZR:
     x: float
     y: float
     z: float
@@ -28,8 +28,8 @@ class CartesianPose:
     def as_tuple(self) -> tuple[float, float, float, float]:
         return (self.x, self.y, self.z, self.r)
 
-    def with_z(self, z: float) -> "CartesianPose":
-        return CartesianPose(self.x, self.y, z, self.r)
+    def with_z(self, z: float) -> "PoseXYZR":
+        return PoseXYZR(self.x, self.y, z, self.r)
 
 
 class DobotDeviceClient:
@@ -48,7 +48,7 @@ class DobotDeviceClient:
         self.dashboard_api: DobotApiDashboard | None = None
         self.move_api: DobotApiMove | None = None
         self.connected = False
-        self._sim_pose = CartesianPose(300.0, 0.0, 240.0, -33.0)
+        self._sim_pose = PoseXYZR(300.0, 0.0, 240.0, -33.0)
         self._logger = logger.getChild(self.__class__.__name__)
 
     def connect(self) -> None:
@@ -83,7 +83,7 @@ class DobotDeviceClient:
             self.move_api.close()
             self.move_api = None
 
-    def set_sim_pose(self, pose: CartesianPose) -> None:
+    def set_sim_pose(self, pose: PoseXYZR) -> None:
         self._sim_pose = pose
 
     def reset(self) -> None:
@@ -136,7 +136,7 @@ class DobotDeviceClient:
 
     def MovJ(self, x: float, y: float, z: float, r: float, *args: Any) -> str | None:
         if self.simulation:
-            self._sim_pose = CartesianPose(x, y, z, r)
+            self._sim_pose = PoseXYZR(x, y, z, r)
             return f"simulation:MovJ({x},{y},{z},{r})"
         return self.move_api.MovJ(x, y, z, r, *args) if self.move_api is not None else None
 

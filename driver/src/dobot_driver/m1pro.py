@@ -5,7 +5,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 from .dobot_client import (
-    CartesianPose,
+    PoseXYZR,
     DobotDeviceClient,
     NUMBER_PATTERN,
 )
@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_HOME_POSITION = [[300, 0, 200], [-33, 0, 0]]
 DEFAULT_CALIBRATED_OFFSET = [[-374, 496.75, 254.2], [-89.11611149, 0, 0]]
 DEFAULT_TOOL_OFFSET = [[0, 0, -232], [122.11611149, 0, 0]]
+DEFAULT_SAFE_HEIGHT = 240.0
 
 class M1Pro:
     """Standalone M1 Pro controller using Dobot's TCP/IP API directly."""
@@ -29,7 +30,7 @@ class M1Pro:
         calibrated_offset: Any = DEFAULT_CALIBRATED_OFFSET,
         scale: float = 1.0,
         tool_offset: Any = DEFAULT_TOOL_OFFSET,
-        safe_height: float = 240.0,
+        safe_height: float = DEFAULT_SAFE_HEIGHT,
         home_waypoints: Sequence[Any] | None = None,
         timeout: float = 10.0,
     ) -> None:
@@ -47,11 +48,12 @@ class M1Pro:
         """
         self._scale = float(scale)
         self._safe_height = float(safe_height)
-        self._home_position = self._coerce_pose(home_position, default_r=-33.0)
-        self._calibrated_offset = self._coerce_pose(calibrated_offset)
-        self._tool_offset = self._coerce_pose(tool_offset)
+        self._home_position = self._to_pose_xyzr(home_position, default_r=-33.0)
+        self._calibrated_offset = self._to_pose_xyzr(calibrated_offset)
+        self._tool_offset = self._to_pose_xyzr(tool_offset)
         self._home_waypoints = [
-            self._coerce_pose(waypoint, default_r=self._home_position.r) for waypoint in (home_waypoints or [])
+            self._to_pose_xyzr(waypoint, default_r=self._home_position.r)
+            for waypoint in (home_waypoints or [])
         ]
         self._logger = logger.getChild(self.__class__.__name__)
         self._logger.setLevel(logging.DEBUG)
@@ -124,14 +126,14 @@ class M1Pro:
         self._speed_factor = float(speed_factor)
         self._device.SpeedFactor(max(1, min(100, int(round(speed_factor * 100)))))
 
-    def get_pose(self, *, frame: str = "robot") -> CartesianPose:
+    def get_pose(self, *, frame: str = "robot") -> PoseXYZR:
         """Get the current Cartesian pose.
 
         Args:
             frame (optional): Coordinate frame for the returned pose. Use `"robot"` or `"work"`.
 
         Returns:
-            CartesianPose: The current pose in the requested frame.
+            PoseXYZR: The current pose in the requested frame.
         """
         robot_pose = self._parse_pose_response(self._device.GetPose())
         if frame == "robot":
@@ -154,18 +156,18 @@ class M1Pro:
 
     def safe_move(
         self,
-        target: Mapping[str, float] | Sequence[Any] | CartesianPose,
+        position: Mapping[str, float],
         *,
         frame: str = "robot",
         speed_factor_lateral: float | None = None,
         speed_factor_up: float | None = None,
         speed_factor_down: float | None = None,
         blocking: bool = True,
-    ) -> CartesianPose:
+    ) -> PoseXYZR:
         """Move to a target pose using a vertical-lateral-vertical path.
 
         Args:
-            target (required): Destination pose as a mapping, sequence, or `CartesianPose`.
+            target (required): Destination pose as a mapping, sequence, or `PoseXYZR`.
             frame (optional): Coordinate frame for `target`. Use `"robot"` or `"work"`.
             speed_factor_lateral (optional): Speed scaling used for the horizontal travel segment.
             speed_factor_up (optional): Speed scaling used for the initial upward move.
@@ -173,22 +175,22 @@ class M1Pro:
             blocking (optional): Whether to wait for each move segment to complete before returning.
 
         Returns:
-            CartesianPose: The resolved destination in robot coordinates.
+            PoseXYZR: The resolved destination in robot coordinates.
         """
-        robot_target = self._resolve_robot_target(target, frame=frame)
+        robot_target = self._resolve_robot_target(position, frame=frame)
         current = self.get_pose(frame="robot")
         travel_z = max(self._safe_height, current.z, robot_target.z)
 
         if current.z < travel_z:
             self._move(
-                CartesianPose(current.x, current.y, travel_z, current.r),
+                PoseXYZR(current.x, current.y, travel_z, current.r),
                 frame="robot",
                 speed_factor=speed_factor_up,
                 blocking=blocking,
             )
 
         self._move(
-            CartesianPose(robot_target.x, robot_target.y, travel_z, robot_target.r),
+            PoseXYZR(robot_target.x, robot_target.y, travel_z, robot_target.r),
             frame="robot",
             speed_factor=speed_factor_lateral,
             blocking=blocking,
@@ -204,14 +206,14 @@ class M1Pro:
 
         return robot_target
 
-    def home(self, *, speed_factor: float | None = None) -> CartesianPose:
+    def home(self, *, speed_factor: float | None = None) -> PoseXYZR:
         """Move the robot to its configured home pose.
 
         Args:
             speed_factor (optional): Speed scaling applied to the safe-height move, any home waypoints, and the final home move.
 
         Returns:
-            CartesianPose: The final home pose in robot coordinates.
+            PoseXYZR: The final home pose in robot coordinates.
         """
         self._move_to_safe_height(speed_factor=speed_factor)
         for waypoint in self._home_waypoints:
@@ -234,7 +236,7 @@ class M1Pro:
         pick_pose = self.safe_move(position, frame="robot")
         self.open_gripper()
        
-        lifted_pose = CartesianPose(pick_pose.x, pick_pose.y, pick_pose.z - 30.0, pick_pose.r)
+        lifted_pose = PoseXYZR(pick_pose.x, pick_pose.y, pick_pose.z - 30.0, pick_pose.r)
         final_pose = self._move(lifted_pose, frame="robot", speed_factor=0.05)
         self.close_gripper()
         
@@ -254,7 +256,7 @@ class M1Pro:
             Mapping[str, float]: The final placed pose as a mapping.
         """
         above_pose = self.safe_move(position, frame="robot")
-        target_pose = CartesianPose(above_pose.x, above_pose.y, above_pose.z - 30.0, above_pose.r)
+        target_pose = PoseXYZR(above_pose.x, above_pose.y, above_pose.z - 30.0, above_pose.r)
         final_pose = self._move(target_pose, frame="robot", speed_factor=0.05)
         self.open_gripper()
         return final_pose
@@ -280,12 +282,12 @@ class M1Pro:
 
     def _move(
         self,
-        target: Mapping[str, float] | Sequence[Any] | CartesianPose,
+        target: Mapping[str, float] | Sequence[Any] | PoseXYZR,
         *,
         frame: str = "robot",
         speed_factor: float | None = None,
         blocking: bool = True,
-    ) -> CartesianPose:
+    ) -> PoseXYZR:
         robot_target = self._resolve_robot_target(target, frame=frame)
         if speed_factor is not None:
             original_speed = self._speed_factor
@@ -298,24 +300,24 @@ class M1Pro:
             self.set_speed_factor(original_speed)
         return robot_target
 
-    def _move_to_safe_height(self, *, speed_factor: float | None = None) -> CartesianPose:
+    def _move_to_safe_height(self, *, speed_factor: float | None = None) -> PoseXYZR:
         current = self.get_pose(frame="robot")
         if current.z >= self._safe_height:
             return current
         return self._move(
-            CartesianPose(current.x, current.y, self._safe_height, current.r),
+            PoseXYZR(current.x, current.y, self._safe_height, current.r),
             frame="robot",
             speed_factor=speed_factor,
         )
 
     def _resolve_robot_target(
         self,
-        target: Mapping[str, float] | Sequence[Any] | CartesianPose,
+        target: Mapping[str, float] | Sequence[Any] | PoseXYZR,
         *,
         frame: str,
-    ) -> CartesianPose:
+    ) -> PoseXYZR:
         default_r = self.get_pose(frame=frame).r if self._device.connected else self._home_position.r
-        pose = self._coerce_pose(target, default_r=default_r)
+        pose = self._to_pose_xyzr(target, default_r=default_r)
         if frame == "robot":
             robot_pose = pose
         elif frame == "work":
@@ -325,23 +327,23 @@ class M1Pro:
         self._validate_robot_pose(robot_pose)
         return robot_pose
 
-    def _work_tool_to_robot(self, work_tool_pose: CartesianPose) -> CartesianPose:
+    def _work_tool_to_robot(self, work_tool_pose: PoseXYZR) -> PoseXYZR:
         robot_tool_pose = self._transform_work_to_robot(
             work_tool_pose, self._calibrated_offset, self._scale
         )
         return self._transform_tool_to_robot(robot_tool_pose, self._tool_offset)
 
-    def _robot_to_work_tool(self, robot_pose: CartesianPose) -> CartesianPose:
+    def _robot_to_work_tool(self, robot_pose: PoseXYZR) -> PoseXYZR:
         robot_tool_pose = self._transform_robot_to_tool(robot_pose, self._tool_offset)
         return self._transform_robot_to_work(robot_tool_pose, self._calibrated_offset, self._scale)
 
     @staticmethod
-    def _coerce_pose(value: Any, *, default_r: float = 0.0) -> CartesianPose:
-        if isinstance(value, CartesianPose):
+    def _to_pose_xyzr(value: Any, *, default_r: float = 0.0) -> PoseXYZR:
+        if isinstance(value, PoseXYZR):
             return value
 
         if isinstance(value, Mapping):
-            return CartesianPose(
+            return PoseXYZR(
                 float(value["x"]),
                 float(value["y"]),
                 float(value["z"]),
@@ -349,13 +351,13 @@ class M1Pro:
             )
 
         if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
-            raise TypeError("Pose must be a mapping, sequence, or CartesianPose.")
+            raise TypeError("Pose must be a mapping, sequence, or PoseXYZR.")
 
         if len(value) == 4 and all(isinstance(item, (int, float)) for item in value):
-            return CartesianPose(float(value[0]), float(value[1]), float(value[2]), float(value[3]))
+            return PoseXYZR(float(value[0]), float(value[1]), float(value[2]), float(value[3]))
 
         if len(value) == 3 and all(isinstance(item, (int, float)) for item in value):
-            return CartesianPose(float(value[0]), float(value[1]), float(value[2]), float(default_r))
+            return PoseXYZR(float(value[0]), float(value[1]), float(value[2]), float(default_r))
 
         if len(value) == 2:
             coordinates, rotation = value
@@ -367,7 +369,7 @@ class M1Pro:
                 and not isinstance(rotation, (str, bytes))
                 and len(rotation) >= 1
             ):
-                return CartesianPose(
+                return PoseXYZR(
                     float(coordinates[0]),
                     float(coordinates[1]),
                     float(coordinates[2]),
@@ -386,15 +388,15 @@ class M1Pro:
     @classmethod
     def _transform_work_to_robot(
         cls,
-        external_pose: CartesianPose,
-        offset: CartesianPose,
+        external_pose: PoseXYZR,
+        offset: PoseXYZR,
         scale: float,
-    ) -> CartesianPose:
+    ) -> PoseXYZR:
         scaled_x = external_pose.x / scale
         scaled_y = external_pose.y / scale
         scaled_z = external_pose.z / scale
         rotated_x, rotated_y = cls._rotate_xy(scaled_x, scaled_y, -offset.r)
-        return CartesianPose(
+        return PoseXYZR(
             rotated_x - offset.x,
             rotated_y - offset.y,
             scaled_z - offset.z,
@@ -404,14 +406,14 @@ class M1Pro:
     @classmethod
     def _transform_robot_to_work(
         cls,
-        internal_pose: CartesianPose,
-        offset: CartesianPose,
+        internal_pose: PoseXYZR,
+        offset: PoseXYZR,
         scale: float,
-    ) -> CartesianPose:
+    ) -> PoseXYZR:
         translated_x = offset.x + internal_pose.x
         translated_y = offset.y + internal_pose.y
         rotated_x, rotated_y = cls._rotate_xy(translated_x, translated_y, offset.r)
-        return CartesianPose(
+        return PoseXYZR(
             scale * rotated_x,
             scale * rotated_y,
             scale * (offset.z + internal_pose.z),
@@ -419,8 +421,8 @@ class M1Pro:
         )
 
     @staticmethod
-    def _transform_tool_to_robot(external_pose: CartesianPose, offset: CartesianPose) -> CartesianPose:
-        return CartesianPose(
+    def _transform_tool_to_robot(external_pose: PoseXYZR, offset: PoseXYZR) -> PoseXYZR:
+        return PoseXYZR(
             external_pose.x - offset.x,
             external_pose.y - offset.y,
             external_pose.z - offset.z,
@@ -428,8 +430,8 @@ class M1Pro:
         )
 
     @staticmethod
-    def _transform_robot_to_tool(internal_pose: CartesianPose, offset: CartesianPose) -> CartesianPose:
-        return CartesianPose(
+    def _transform_robot_to_tool(internal_pose: PoseXYZR, offset: PoseXYZR) -> PoseXYZR:
+        return PoseXYZR(
             internal_pose.x + offset.x,
             internal_pose.y + offset.y,
             internal_pose.z + offset.z,
@@ -437,7 +439,7 @@ class M1Pro:
         )
 
     @staticmethod
-    def _within_workspace(pose: CartesianPose) -> bool:
+    def _within_workspace(pose: PoseXYZR) -> bool:
         x, y, z, _ = pose.as_tuple()
         if not (5 <= z <= 245):
             return False
@@ -449,7 +451,7 @@ class M1Pro:
         radius = math.sqrt(x**2 + (abs(y) - 200) ** 2)
         return radius <= 200
 
-    def _validate_robot_pose(self, pose: CartesianPose) -> None:
+    def _validate_robot_pose(self, pose: PoseXYZR) -> None:
         if not self._within_workspace(pose):
             raise ValueError(f"Target pose is outside the M1 Pro workspace: {pose}")
 
@@ -470,6 +472,6 @@ class M1Pro:
         return values
 
     @classmethod
-    def _parse_pose_response(cls, payload: str | None) -> CartesianPose:
+    def _parse_pose_response(cls, payload: str | None) -> PoseXYZR:
         values = cls._parse_numeric_response(payload, minimum=6, take_last=6)
-        return CartesianPose(values[0], values[1], values[2], values[3])
+        return PoseXYZR(values[0], values[1], values[2], values[3])
