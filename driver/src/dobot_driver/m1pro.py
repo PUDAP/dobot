@@ -51,29 +51,26 @@ class M1Pro:
             simulation (optional): Whether to use the simulated device client instead of real hardware I/O.
             auto_connect (optional): Whether to connect to the device immediately during construction.
         """
-        self.host = dobot_ip
-        self.verbose = verbose
-        self.simulation = simulation
-        self.scale = float(scale)
-        self.safe_height = float(safe_height)
-        self.home_position = self._coerce_pose(home_position, default_r=-33.0)
-        self.calibrated_offset = self._coerce_pose(calibrated_offset)
-        self.tool_offset = self._coerce_pose(tool_offset)
-        self.home_waypoints = [
-            self._coerce_pose(waypoint, default_r=self.home_position.r) for waypoint in (home_waypoints or [])
+        self._scale = float(scale)
+        self._safe_height = float(safe_height)
+        self._home_position = self._coerce_pose(home_position, default_r=-33.0)
+        self._calibrated_offset = self._coerce_pose(calibrated_offset)
+        self._tool_offset = self._coerce_pose(tool_offset)
+        self._home_waypoints = [
+            self._coerce_pose(waypoint, default_r=self._home_position.r) for waypoint in (home_waypoints or [])
         ]
         self._logger = logger.getChild(self.__class__.__name__)
-        if self.verbose:
+        if verbose:
             self._logger.setLevel(logging.DEBUG)
-        self.device = DobotDeviceClient(
+        self._device = DobotDeviceClient(
             dobot_ip,
             timeout=timeout,
             simulation=simulation,
             verbose=verbose,
         )
-        self.device.set_sim_pose(self.home_position)
+        self._device.set_sim_pose(self._home_position)
         self._speed_factor = 0.2
-        self._validate_robot_pose(self.home_position)
+        self._validate_robot_pose(self._home_position)
         if auto_connect:
             self._connect()
 
@@ -102,7 +99,7 @@ class M1Pro:
             RuntimeError: If the dashboard API is not connected.
         """
         self._logger.debug("Opening gripper")
-        return self.device.DOExecute(1, 1)
+        return self._device.DOExecute(1, 1)
 
     def close_gripper(self) -> str:
         """Close the gripper.
@@ -117,7 +114,7 @@ class M1Pro:
             RuntimeError: If the dashboard API is not connected.
         """
         self._logger.debug("Closing gripper")
-        return self.device.DOExecute(1, 0)
+        return self._device.DOExecute(1, 0)
 
     def reset(self) -> None:
         """Reset the underlying device controller.
@@ -125,7 +122,7 @@ class M1Pro:
         Args:
             None.
         """
-        self.device.reset()
+        self._device.reset()
 
     def set_speed_factor(self, speed_factor: float) -> None:
         """Set the motion speed scaling factor.
@@ -136,7 +133,7 @@ class M1Pro:
         if not 0.0 < speed_factor <= 1.0:
             raise ValueError("speed_factor must be in the range (0.0, 1.0].")
         self._speed_factor = float(speed_factor)
-        self.device.SpeedFactor(max(1, min(100, int(round(speed_factor * 100)))))
+        self._device.SpeedFactor(max(1, min(100, int(round(speed_factor * 100)))))
 
     def get_pose(self, *, frame: str = "robot") -> CartesianPose:
         """Get the current Cartesian pose.
@@ -147,7 +144,7 @@ class M1Pro:
         Returns:
             CartesianPose: The current pose in the requested frame.
         """
-        robot_pose = self._parse_pose_response(self.device.GetPose())
+        robot_pose = self._parse_pose_response(self._device.GetPose())
         if frame == "robot":
             return robot_pose
         if frame == "work":
@@ -163,7 +160,7 @@ class M1Pro:
         Returns:
             tuple[float, float, float, float, float, float]: The six reported joint angles.
         """
-        values = self._parse_numeric_response(self.device.GetAngle(), minimum=6, take_last=6)
+        values = self._parse_numeric_response(self._device.GetAngle(), minimum=6, take_last=6)
         return tuple(values[-6:])  # type: ignore[return-value]
 
     def safe_move(
@@ -191,7 +188,7 @@ class M1Pro:
         """
         robot_target = self._resolve_robot_target(target, frame=frame)
         current = self.get_pose(frame="robot")
-        travel_z = max(self.safe_height, current.z, robot_target.z)
+        travel_z = max(self._safe_height, current.z, robot_target.z)
 
         if current.z < travel_z:
             self._move(
@@ -228,9 +225,9 @@ class M1Pro:
             CartesianPose: The final home pose in robot coordinates.
         """
         self._move_to_safe_height(speed_factor=speed_factor)
-        for waypoint in self.home_waypoints:
+        for waypoint in self._home_waypoints:
             self._move(waypoint, frame="robot", speed_factor=speed_factor)
-        return self._move(self.home_position, frame="robot", speed_factor=speed_factor)
+        return self._move(self._home_position, frame="robot", speed_factor=speed_factor)
 
     def pick_from(
         self,
@@ -286,11 +283,11 @@ class M1Pro:
     # Private helpers
 
     def _connect(self) -> None:
-        self.device.connect()
+        self._device.connect()
         self.set_speed_factor(self._speed_factor)
 
     def _disconnect(self) -> None:
-        self.device.disconnect()
+        self._device.disconnect()
 
     def _move(
         self,
@@ -305,19 +302,19 @@ class M1Pro:
             original_speed = self._speed_factor
             self.set_speed_factor(speed_factor)
         self._logger.debug("Moving to %s in %s frame", robot_target, frame)
-        self.device.MovJ(*robot_target.as_tuple())
+        self._device.MovJ(*robot_target.as_tuple())
         if blocking:
-            self.device.Sync()
+            self._device.Sync()
         if speed_factor is not None:
             self.set_speed_factor(original_speed)
         return robot_target
 
     def _move_to_safe_height(self, *, speed_factor: float | None = None) -> CartesianPose:
         current = self.get_pose(frame="robot")
-        if current.z >= self.safe_height:
+        if current.z >= self._safe_height:
             return current
         return self._move(
-            CartesianPose(current.x, current.y, self.safe_height, current.r),
+            CartesianPose(current.x, current.y, self._safe_height, current.r),
             frame="robot",
             speed_factor=speed_factor,
         )
@@ -328,7 +325,7 @@ class M1Pro:
         *,
         frame: str,
     ) -> CartesianPose:
-        default_r = self.get_pose(frame=frame).r if self.device.connected else self.home_position.r
+        default_r = self.get_pose(frame=frame).r if self._device.connected else self._home_position.r
         pose = self._coerce_pose(target, default_r=default_r)
         if frame == "robot":
             robot_pose = pose
@@ -340,12 +337,14 @@ class M1Pro:
         return robot_pose
 
     def _work_tool_to_robot(self, work_tool_pose: CartesianPose) -> CartesianPose:
-        robot_tool_pose = self._transform_work_to_robot(work_tool_pose, self.calibrated_offset, self.scale)
-        return self._transform_tool_to_robot(robot_tool_pose, self.tool_offset)
+        robot_tool_pose = self._transform_work_to_robot(
+            work_tool_pose, self._calibrated_offset, self._scale
+        )
+        return self._transform_tool_to_robot(robot_tool_pose, self._tool_offset)
 
     def _robot_to_work_tool(self, robot_pose: CartesianPose) -> CartesianPose:
-        robot_tool_pose = self._transform_robot_to_tool(robot_pose, self.tool_offset)
-        return self._transform_robot_to_work(robot_tool_pose, self.calibrated_offset, self.scale)
+        robot_tool_pose = self._transform_robot_to_tool(robot_pose, self._tool_offset)
+        return self._transform_robot_to_work(robot_tool_pose, self._calibrated_offset, self._scale)
 
     @staticmethod
     def _coerce_pose(value: Any, *, default_r: float = 0.0) -> CartesianPose:
