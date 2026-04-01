@@ -7,6 +7,7 @@ execution via NATS messaging, telemetry publishing, and connection management.
 import asyncio
 import logging
 import sys
+import sys
 import time
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from puda_comms import EdgeNatsClient, EdgeRunner
@@ -19,7 +20,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     force=True,
 )
-logging.getLogger("puda_drivers").setLevel(logging.WARNING)
+logging.getLogger("dobot_driver").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # Environment configuration
@@ -54,7 +55,7 @@ async def main():
     logger.info("Full config: %s", config.model_dump())
 
     logger.info("Initializing dobot machine driver")
-    driver = M1Pro(dobot_ip=config.dobot_ip)
+    driver = M1Pro(dobot_ip=config.dobot_ip, home_position=[200, 0, 240, 20])
     logger.info("Dobot machine initialized successfully")
 
     logger.info("Connecting to NATS at %s", config.nats_servers)

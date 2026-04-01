@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from typing import Any, Mapping, Sequence
 
 from .dobot_client import (
@@ -11,7 +12,6 @@ from .dobot_client import (
 )
 
 logger = logging.getLogger(__name__)
-
 DEFAULT_HOME_POSITION = [[300, 0, 200], [-33, 0, 0]]
 DEFAULT_CALIBRATED_OFFSET = [[-374, 496.75, 254.2], [-89.11611149, 0, 0]]
 DEFAULT_TOOL_OFFSET = [[0, 0, -232], [122.11611149, 0, 0]]
@@ -216,6 +216,7 @@ class M1Pro:
             PoseXYZR: The final home pose in robot coordinates.
         """
         self._move_to_safe_height(speed_factor=speed_factor)
+        self.open_gripper()
         for waypoint in self._home_waypoints:
             self._move(waypoint, frame="robot", speed_factor=speed_factor)
         return self._move(self._home_position, frame="robot", speed_factor=speed_factor)
@@ -273,9 +274,18 @@ class M1Pro:
 
     # Private helpers
 
-    def _connect(self) -> None:
-        self._device.connect()
-        self.set_speed_factor(self._speed_factor)
+    def _connect(self, *, retry_delay: float = 5.0) -> None:
+        while True:
+            try:
+                self._device.connect()
+                self.set_speed_factor(self._speed_factor)
+                return
+            except Exception as e:
+                self._logger.warning(
+                    "Connection failed: %s. Retrying in %.1f s...", e, retry_delay
+                )
+                self._device.close()
+                time.sleep(retry_delay)
 
     def _disconnect(self) -> None:
         self._device.disconnect()
