@@ -16,6 +16,7 @@ DEFAULT_HOME_POSITION = [[300, 0, 200], [-33, 0, 0]]
 DEFAULT_CALIBRATED_OFFSET = [[-374, 496.75, 254.2], [-89.11611149, 0, 0]]
 DEFAULT_TOOL_OFFSET = [[0, 0, -232], [122.11611149, 0, 0]]
 DEFAULT_SAFE_HEIGHT = 240.0
+GRIPPER_HEIGHT = 30.0
 
 class M1Pro:
     """Standalone M1 Pro controller using Dobot's TCP/IP API directly."""
@@ -241,7 +242,7 @@ class M1Pro:
         pick_pose = self.safe_move(position, frame="robot")
         self.open_gripper()
        
-        lifted_pose = PoseXYZR(pick_pose.x, pick_pose.y, pick_pose.z - 30.0, pick_pose.r)
+        lifted_pose = PoseXYZR(pick_pose.x, pick_pose.y, pick_pose.z - GRIPPER_HEIGHT, pick_pose.r)
         final_pose = self._move(lifted_pose, frame="robot", speed_factor=0.05)
         self.close_gripper()
         
@@ -261,7 +262,7 @@ class M1Pro:
             Mapping[str, float]: The final placed pose as a mapping.
         """
         above_pose = self.safe_move(position, frame="robot")
-        target_pose = PoseXYZR(above_pose.x, above_pose.y, above_pose.z - 30.0, above_pose.r)
+        target_pose = PoseXYZR(above_pose.x, above_pose.y, above_pose.z - GRIPPER_HEIGHT, above_pose.r)
         final_pose = self._move(target_pose, frame="robot", speed_factor=0.05)
         self.open_gripper()
         return final_pose
