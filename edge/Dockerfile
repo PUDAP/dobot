@@ -14,6 +14,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 COPY pyproject.toml uv.lock ./
 COPY edge/ ./edge/
+COPY driver/ ./driver/
 
 RUN uv sync --frozen --no-dev --no-install-project --package dobot-edge
 
