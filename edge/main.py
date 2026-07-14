@@ -10,7 +10,7 @@ import sys
 import sys
 import time
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from puda_comms import EdgeNatsClient, EdgeRunner
+from puda import EdgeNatsClient, EdgeRunner
 from dobot_driver import M1Pro
 
 

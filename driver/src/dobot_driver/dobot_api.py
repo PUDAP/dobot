@@ -1,16 +1,8 @@
 import os
 import json
-from typing import Any
 import threading
-import datetime
 import socket
 import numpy as np
-
-try:
-    from tkinter import Text, END
-except ModuleNotFoundError:
-    Text = Any
-    END = "end"
 
 alarmControllerFile = "files/alarm_controller.json"
 alarmServoFile = "files/alarm_servo.json"
@@ -109,14 +101,11 @@ def alarmAlarmJsonFile():
 
 
 class DobotApi:
-    def __init__(self, ip, port, *args):
+    def __init__(self, ip, port):
         self.ip = ip
         self.port = port
         self.socket_dobot = 0
         self.__globalLock = threading.Lock()
-        self.text_log: Text = None
-        if args:
-            self.text_log = args[0]
 
         if self.port == 29999 or self.port == 30003 or self.port == 30004:
             try:
@@ -131,11 +120,7 @@ class DobotApi:
                 f"Connect to dashboard server need use port {self.port} !")
 
     def log(self, text):
-        if self.text_log:
-            date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S ")
-            self.text_log.insert(END, date + text + "\n")
-        else:
-            print(text)
+        print(text)
 
     def send_data(self, string):
         try:
