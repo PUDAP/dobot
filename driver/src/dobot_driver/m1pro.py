@@ -177,6 +177,10 @@ class M1Pro:
         Returns:
             PoseXYZR: The resolved destination in robot coordinates.
         """
+        if position["y"] > 0:
+            self._device.SetArmOrientation(right_handed=False)
+        else:
+            self._device.SetArmOrientation(right_handed=True)
         robot_target = self._resolve_robot_target(position, frame=frame)
         current = self.get_pose(frame="robot")
         travel_z = max(self._safe_height, current.z, robot_target.z)
