@@ -101,15 +101,17 @@ def alarmAlarmJsonFile():
 
 
 class DobotApi:
-    def __init__(self, ip, port):
+    def __init__(self, ip, port, timeout=10.0):
         self.ip = ip
         self.port = port
+        self.timeout = timeout
         self.socket_dobot = 0
         self.__globalLock = threading.Lock()
 
         if self.port == 29999 or self.port == 30003 or self.port == 30004:
             try:
                 self.socket_dobot = socket.socket()
+                self.socket_dobot.settimeout(timeout)
                 self.socket_dobot.connect((self.ip, self.port))
             except socket.error:
                 print(socket.error)
@@ -123,45 +125,53 @@ class DobotApi:
         print(text)
 
     def send_data(self, string):
-        try:
-            self.log(f"Send to {self.ip}:{self.port}: {string}")
-            self.socket_dobot.send(str.encode(string, 'utf-8'))
-        except Exception as e:
-            print(e)
+        self.log(f"Send to {self.ip}:{self.port}: {string}")
+        self.socket_dobot.send(str.encode(string, 'utf-8'))
 
     def wait_reply(self):
         """
     Read the return value
     """
-        data = ""
         try:
             data = self.socket_dobot.recv(1024)
-        except Exception as e:
-            print(e)
-
-        finally:
-            if len(data) == 0:
-                data_str = data
-            else:
-                data_str = str(data, encoding="utf-8", errors='replace')
-                data_str.replace('\uFFFD', '')
-                self.log(f'Receive from {self.ip}:{self.port}: {data_str}')
-            return data_str
+        except socket.timeout as exc:
+            raise TimeoutError(
+                f"Timed out after {self.timeout}s waiting for Dobot on "
+                f"{self.ip}:{self.port}."
+            ) from exc
+        if not data:
+            raise ConnectionError(
+                f"Dobot on {self.ip}:{self.port} closed the connection without replying."
+            )
+        data_str = data.decode("utf-8", errors="replace").replace("\uFFFD", "")
+        self.log(f"Receive from {self.ip}:{self.port}: {data_str}")
+        return data_str
 
     def close(self):
         """
     Close the port
     """
-        if (self.socket_dobot != 0):
+        if self.socket_dobot != 0:
             self.socket_dobot.close()
+            self.socket_dobot = 0
 
     def sendRecvMsg(self, string):
         """
     send-recv Sync
     """
         with self.__globalLock:
-            self.send_data(string)
+            try:
+                self.send_data(string)
+            except OSError as exc:
+                raise ConnectionError(
+                    f"Failed to send {string!r} to Dobot on {self.ip}:{self.port}: {exc}"
+                ) from exc
             recvData = self.wait_reply()
+            error_code = recvData.split(",", 1)[0].strip()
+            if error_code and error_code != "0":
+                raise RuntimeError(
+                    f"Dobot on {self.ip}:{self.port} rejected {string!r}: {recvData}"
+                )
             return recvData
 
     def __del__(self):

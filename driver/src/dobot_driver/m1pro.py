@@ -471,13 +471,20 @@ class M1Pro:
 
     @staticmethod
     def _parse_numeric_response(
-        payload: str | None,
+        payload: str | bytes | None,
         *,
         minimum: int,
         take_last: int | None = None,
     ) -> list[float]:
         if payload is None:
             raise RuntimeError("Dobot returned no data.")
+        if isinstance(payload, bytes):
+            payload = payload.decode("utf-8", errors="replace")
+        if not payload.strip():
+            raise RuntimeError(
+                "Dobot returned no data. Another client may already be connected "
+                "(e.g. dobot-edge). Stop it with: docker stop dobot-edge"
+            )
         values = [float(value) for value in NUMBER_PATTERN.findall(payload)]
         if len(values) < minimum:
             raise RuntimeError(f"Unable to parse Dobot response: {payload}")

@@ -57,8 +57,10 @@ class DobotDeviceClient:
         if self.simulation:
             self.connected = True
             return
-        self.dashboard_api = DobotApiDashboard(self.host, DASHBOARD_PORT)
-        self.move_api = DobotApiMove(self.host, MOVE_PORT)
+        self.dashboard_api = DobotApiDashboard(
+            self.host, DASHBOARD_PORT, timeout=self.timeout
+        )
+        self._connect_move_api()
         self.reset()
         if self.dashboard_api is not None:
             self.dashboard_api.User(0)
@@ -85,6 +87,43 @@ class DobotDeviceClient:
 
     def set_sim_pose(self, pose: PoseXYZR) -> None:
         self._sim_pose = pose
+
+    def _connect_move_api(self) -> None:
+        move_timeout = max(self.timeout, 120.0)
+        self.move_api = DobotApiMove(self.host, MOVE_PORT, timeout=move_timeout)
+
+    def _reconnect_move_api(self) -> None:
+        if self.move_api is not None:
+            self.move_api.close()
+            self.move_api = None
+        self.ClearError()
+        self._connect_move_api()
+
+    def _call_move_api(self, method_name: str, *args: Any) -> str:
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                if self.move_api is None:
+                    self._connect_move_api()
+                method = getattr(self.move_api, method_name)
+                response = method(*args)
+                if not response:
+                    raise ConnectionError(
+                        f"Dobot move port returned no data for {method_name}."
+                    )
+                return response
+            except (ConnectionError, TimeoutError, OSError) as exc:
+                last_error = exc
+                self._logger.warning(
+                    "Move port command %s failed (%s). Reconnecting...",
+                    method_name,
+                    exc,
+                )
+                self._reconnect_move_api()
+                if attempt == 0:
+                    continue
+                raise
+        raise last_error or RuntimeError(f"Dobot move command {method_name} failed.")
 
     def reset(self) -> None:
         self.DisableRobot()
@@ -138,12 +177,12 @@ class DobotDeviceClient:
         if self.simulation:
             self._sim_pose = PoseXYZR(x, y, z, r)
             return f"simulation:MovJ({x},{y},{z},{r})"
-        return self.move_api.MovJ(x, y, z, r, *args) if self.move_api is not None else None
+        return self._call_move_api("MovJ", x, y, z, r, *args)
 
     def Sync(self) -> str | None:
         if self.simulation:
             return "simulation:Sync"
-        return self.move_api.Sync() if self.move_api is not None else None
+        return self._call_move_api("Sync")
 
     def DOExecute(self, index: int, status: int) -> str | None:
         if self.simulation:
