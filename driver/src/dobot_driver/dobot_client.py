@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 import re
+import time
 from typing import Any
 
 from .dobot_api import (
@@ -126,8 +127,9 @@ class DobotDeviceClient:
         raise last_error or RuntimeError(f"Dobot move command {method_name} failed.")
 
     def reset(self) -> None:
-        self.DisableRobot()
         self.ClearError()
+        time.sleep(0.5)
+        self.DisableRobot()
         self.EnableRobot()
 
     def ClearError(self) -> str | None:
@@ -165,6 +167,16 @@ class DobotDeviceClient:
             x, y, z, r = self._sim_pose.as_tuple()
             return f"{{{x},{y},{z},{r},0,0}}"
         return self.dashboard_api.GetPose() if self.dashboard_api is not None else None
+
+    def RobotMode(self) -> str | None:
+        if self.simulation:
+            return "0,{5},RobotMode();"
+        return self.dashboard_api.RobotMode() if self.dashboard_api is not None else None
+
+    def GetErrorID(self) -> str | None:
+        if self.simulation:
+            return "0,{},GetErrorID();"
+        return self.dashboard_api.GetErrorID() if self.dashboard_api is not None else None
 
     def SetArmOrientation(self, right_handed: bool) -> str | None:
         if self.simulation:

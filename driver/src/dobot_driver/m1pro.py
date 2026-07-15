@@ -90,7 +90,7 @@ class M1Pro:
             RuntimeError: If the dashboard API is not connected.
         """
         self._logger.debug("Opening gripper")
-        return self._device.DOExecute(1, 1)
+        return self._device.DOExecute(1, 0)
 
     def close_gripper(self) -> str:
         """Close the gripper.
@@ -105,7 +105,7 @@ class M1Pro:
             RuntimeError: If the dashboard API is not connected.
         """
         self._logger.debug("Closing gripper")
-        return self._device.DOExecute(1, 0)
+        return self._device.DOExecute(1, 1)
 
     def reset(self) -> None:
         """Reset the underlying device controller.
@@ -177,13 +177,14 @@ class M1Pro:
         Returns:
             PoseXYZR: The resolved destination in robot coordinates.
         """
-        if position["y"] > 0:
-            self._device.SetArmOrientation(right_handed=False)
-        else:
-            self._device.SetArmOrientation(right_handed=True)
         robot_target = self._resolve_robot_target(position, frame=frame)
         current = self.get_pose(frame="robot")
         travel_z = max(self._safe_height, current.z, robot_target.z)
+
+        if current.y > 0:
+            self._device.SetArmOrientation(right_handed=True)
+        else:
+            self._device.SetArmOrientation(right_handed=False)
 
         if current.z < travel_z:
             self._move(
@@ -192,6 +193,11 @@ class M1Pro:
                 speed_factor=speed_factor_up,
                 blocking=blocking,
             )
+
+        if robot_target.y > 0:
+            self._device.SetArmOrientation(right_handed=True)
+        else:
+            self._device.SetArmOrientation(right_handed=False)
 
         self._move(
             PoseXYZR(robot_target.x, robot_target.y, travel_z, robot_target.r),
@@ -307,9 +313,32 @@ class M1Pro:
             original_speed = self._speed_factor
             self.set_speed_factor(speed_factor)
         self._logger.debug("Moving to %s in %s frame", robot_target, frame)
-        self._device.MovJ(*robot_target.as_tuple())
+        movj_response = self._device.MovJ(*robot_target.as_tuple())
+        self._logger.debug("MovJ response: %r", movj_response)
         if blocking:
-            self._device.Sync()
+            sync_response = self._device.Sync()
+            self._logger.debug("Sync response: %r", sync_response)
+            measured_pose = self.get_pose(frame="robot")
+            if not all(
+                math.isclose(actual, expected, abs_tol=1.0)
+                for actual, expected in zip(
+                    measured_pose.as_tuple(), robot_target.as_tuple(), strict=True
+                )
+            ):
+                try:
+                    robot_mode = self._device.RobotMode()
+                except Exception as exc:
+                    robot_mode = f"query failed: {exc}"
+                try:
+                    error_ids = self._device.GetErrorID()
+                except Exception as exc:
+                    error_ids = f"query failed: {exc}"
+                raise RuntimeError(
+                    "Dobot did not reach target after Sync: "
+                    f"target={robot_target}, measured={measured_pose}, "
+                    f"movj_response={movj_response!r}, sync_response={sync_response!r}, "
+                    f"robot_mode={robot_mode!r}, error_ids={error_ids!r}"
+                )
         if speed_factor is not None:
             self.set_speed_factor(original_speed)
         return robot_target
