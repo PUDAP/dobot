@@ -159,9 +159,9 @@ class M1Pro:
         position: Mapping[str, float],
         *,
         frame: str = "robot",
-        speed_factor_lateral: float | None = None,
-        speed_factor_up: float | None = None,
-        speed_factor_down: float | None = None,
+        speed_factor_lateral: float | None = 0.75,
+        speed_factor_up: float | None = 0.25,
+        speed_factor_down: float | None = 0.25,
         blocking: bool = True,
     ) -> PoseXYZR:
         """Move to a target pose using a vertical-lateral-vertical path.
@@ -244,13 +244,9 @@ class M1Pro:
         Returns:
             Mapping[str, float]: The final lifted pose as a mapping.
         """
-        pick_pose = self.safe_move(position, frame="robot")
+        final_pose = self.safe_move(position, frame="robot")
         self.open_gripper()
-       
-        lifted_pose = PoseXYZR(pick_pose.x, pick_pose.y, pick_pose.z, pick_pose.r)
-        final_pose = self._move(lifted_pose, frame="robot", speed_factor=0.05)
         self.close_gripper()
-        
         return final_pose
 
     def place_to(
@@ -266,9 +262,7 @@ class M1Pro:
         Returns:
             Mapping[str, float]: The final placed pose as a mapping.
         """
-        above_pose = self.safe_move(position, frame="robot")
-        target_pose = PoseXYZR(above_pose.x, above_pose.y, above_pose.z, above_pose.r)
-        final_pose = self._move(target_pose, frame="robot", speed_factor=0.05)
+        final_pose = self.safe_move(position, frame="robot")
         self.open_gripper()
         return final_pose
 

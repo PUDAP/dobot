@@ -115,7 +115,7 @@ class VerifiedMotionTests(unittest.TestCase):
             ],
         )
 
-    def test_safe_move_defaults_all_segments_to_075_speed_factor(self) -> None:
+    def test_safe_move_defaults_to_075_lateral_and_025_vertical_speed_factors(self) -> None:
         arm = M1Pro.__new__(M1Pro)
         speed_factors: list[float | None] = []
 
@@ -135,7 +135,40 @@ class VerifiedMotionTests(unittest.TestCase):
         arm._move = record_move
         arm.safe_move({"x": 131, "y": -231, "z": 14, "r": -20})
 
-        self.assertEqual(speed_factors, [0.75, 0.75, 0.75])
+        self.assertEqual(speed_factors, [0.25, 0.75, 0.25])
+
+    def test_pick_from_uses_safe_move_result_without_an_extra_speed_override(self) -> None:
+        arm = M1Pro.__new__(M1Pro)
+        safe_pose = PoseXYZR(131, -231, 14, -20)
+        gripper_calls: list[str] = []
+        arm.safe_move = lambda position, frame="robot": safe_pose  # type: ignore[method-assign]
+        arm.open_gripper = lambda: gripper_calls.append("open")  # type: ignore[method-assign]
+        arm.close_gripper = lambda: gripper_calls.append("close")  # type: ignore[method-assign]
+
+        def unexpected_move(*args, **kwargs):
+            raise AssertionError("pick_from must not add a move outside safe_move")
+
+        arm._move = unexpected_move
+        result = arm.pick_from(position={"x": 131, "y": -231, "z": 14, "r": -20})
+
+        self.assertEqual(result, safe_pose)
+        self.assertEqual(gripper_calls, ["open", "close"])
+
+    def test_place_to_uses_safe_move_result_without_an_extra_speed_override(self) -> None:
+        arm = M1Pro.__new__(M1Pro)
+        safe_pose = PoseXYZR(57, 275, 21, -20)
+        gripper_calls: list[str] = []
+        arm.safe_move = lambda position, frame="robot": safe_pose  # type: ignore[method-assign]
+        arm.open_gripper = lambda: gripper_calls.append("open")  # type: ignore[method-assign]
+
+        def unexpected_move(*args, **kwargs):
+            raise AssertionError("place_to must not add a move outside safe_move")
+
+        arm._move = unexpected_move
+        result = arm.place_to(position={"x": 57, "y": 275, "z": 21, "r": -20})
+
+        self.assertEqual(result, safe_pose)
+        self.assertEqual(gripper_calls, ["open"])
 
     def test_negative_y_safe_move_selects_left_handed_orientation(self) -> None:
         arm = M1Pro.__new__(M1Pro)
