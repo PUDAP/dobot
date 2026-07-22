@@ -13,11 +13,9 @@ RUN apt-get update && apt-get install -y \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 COPY pyproject.toml uv.lock ./
-COPY edge/ ./edge/
-COPY driver/ ./driver/
+COPY src/ ./src/
+COPY main.py ./
 
-RUN uv sync --frozen --no-dev --no-install-project --package dobot-edge
-
-WORKDIR /app/edge
+RUN uv sync --frozen --no-dev
 
 CMD ["uv", "run", "python", "main.py"]

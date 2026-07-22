@@ -1,6 +1,6 @@
 # dobot
 
-Monorepo for the dobot edge service.
+Dobot M1 Pro driver and edge service.
 
 ## What It Does
 
@@ -19,10 +19,10 @@ Monorepo for the dobot edge service.
 From repo root:
 
 ```bash
-cp edge/.env.example edge/.env
+cp .env.example .env
 ```
 
-Edit `edge/.env` and configure:
+Edit `.env` and configure:
 
 - `MACHINE_ID`
 - `NATS_SERVERS`
@@ -35,19 +35,19 @@ All commands below are run from repo root.
 Build and start:
 
 ```bash
-docker compose -f edge/compose.yml up -d --build
+docker compose up -d --build
 ```
 
 View logs:
 
 ```bash
-docker compose -f edge/compose.yml logs -f
+docker compose logs -f
 ```
 
 Stop:
 
 ```bash
-docker compose -f edge/compose.yml down
+docker compose down
 ```
 
 ## Run Baremetal (uv)
@@ -55,8 +55,8 @@ docker compose -f edge/compose.yml down
 From repo root:
 
 ```bash
-uv sync --all-packages
-uv run --package dobot-edge python edge/main.py
+uv sync
+uv run python main.py
 ```
 
 ## Build and Push Image (GHCR)
@@ -70,7 +70,7 @@ echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 Build:
 
 ```bash
-docker compose -f edge/compose.yml build
+docker compose build
 ```
 
 Push:
@@ -82,10 +82,5 @@ docker push ghcr.io/PUDAP/dobot-edge:latest
 Or with Compose:
 
 ```bash
-docker compose -f edge/compose.yml push
+docker compose push
 ```
-
-## Notes
-
-- Docker build context is workspace root (`..` in `edge/compose.yml`).
-- Dockerfile path is `edge/Dockerfile`.

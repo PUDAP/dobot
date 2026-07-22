@@ -169,10 +169,10 @@ class M1Pro:
         Args:
             target (required): Destination pose as a mapping, sequence, or `PoseXYZR`.
             frame (optional): Coordinate frame for `target`. Use `"robot"` or `"work"`.
-            speed_factor_lateral (optional): Speed scaling used for the horizontal travel segment.
-            speed_factor_up (optional): Speed scaling used for the initial upward move.
-            speed_factor_down (optional): Speed scaling used for the final downward move.
-            blocking (optional): Whether to wait for each move segment to complete before returning.
+            speed_factor_lateral (optional): Speed scaling used for the horizontal travel segment. default is 0.75.
+            speed_factor_up (optional): Speed scaling used for the initial upward move. default is 0.25.
+            speed_factor_down (optional): Speed scaling used for the final downward move. default is 0.25.
+            blocking (optional): Whether to wait for each move segment to complete before returning. default is True.
 
         Returns:
             PoseXYZR: The resolved destination in robot coordinates.

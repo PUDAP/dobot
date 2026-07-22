@@ -8,7 +8,7 @@ service first if it is running::
 
 Run from the repo root::
 
-    DOBOT_IP=192.168.2.6 uv run --package dobot-driver python driver/test_home.py
+    DOBOT_IP=192.168.2.6 uv run python src/dobot_driver/tests/test_home.py
 """
 
 from __future__ import annotations

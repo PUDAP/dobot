@@ -1,8 +1,8 @@
 services:
   dobot:
     build:
-      context: ..
-      dockerfile: edge/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     image: ghcr.io/pudap/dobot-edge:latest
     container_name: dobot-edge
     # Required so localhost NATS URLs resolve to the host broker.
@@ -10,7 +10,7 @@ services:
     restart: unless-stopped
     # Mount host .env so config updates apply after recreate (see main.py Config).
     volumes:
-      - ./.env:/app/edge/.env:ro
+      - ./.env:/app/.env:ro
     healthcheck:
       test: ["CMD", "uv", "run", "python", "-c", "import sys; sys.exit(0)"]
       interval: 30s
