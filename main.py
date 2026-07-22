@@ -7,7 +7,6 @@ execution via NATS messaging, telemetry publishing, and connection management.
 import asyncio
 import logging
 import sys
-import sys
 import time
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from puda import EdgeNatsClient, EdgeRunner
