@@ -155,7 +155,7 @@ class DobotApi:
             self.socket_dobot.close()
             self.socket_dobot = 0
 
-    def sendRecvMsg(self, string):
+    def sendRecvMsg(self, string, *, accepted_error_codes=()):
         """
     send-recv Sync
     """
@@ -168,7 +168,11 @@ class DobotApi:
                 ) from exc
             recvData = self.wait_reply()
             error_code = recvData.split(",", 1)[0].strip()
-            if error_code and error_code != "0":
+            if (
+                error_code
+                and error_code != "0"
+                and error_code not in accepted_error_codes
+            ):
                 raise RuntimeError(
                     f"Dobot on {self.ip}:{self.port} rejected {string!r}: {recvData}"
                 )
@@ -208,7 +212,9 @@ class DobotApiDashboard(DobotApi):
     Clear controller alarm information
     """
         string = "ClearError()"
-        return self.sendRecvMsg(string)
+        # This controller reports -1 when no error exists; ClearError has still
+        # completed and startup must continue to EnableRobot().
+        return self.sendRecvMsg(string, accepted_error_codes={"-1"})
 
     def ResetRobot(self):
         """

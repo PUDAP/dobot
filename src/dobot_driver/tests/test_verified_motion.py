@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
+from dobot_driver.dobot_api import DobotApiDashboard
 from dobot_driver.dobot_client import DobotDeviceClient, PoseXYZR
 from dobot_driver.m1pro import M1Pro
 
@@ -82,6 +84,81 @@ class VerifiedMotionTests(unittest.TestCase):
         arm.close_gripper()
 
         self.assertEqual(device.calls, [(1, 0), (1, 1)])
+
+    def test_set_arm_orientation_accepts_one_and_sends_right_handed(self) -> None:
+        arm = M1Pro.__new__(M1Pro)
+
+        class OrientationDevice:
+            def __init__(self) -> None:
+                self.calls: list[bool] = []
+
+            def SetArmOrientation(self, right_handed: bool) -> str:
+                self.calls.append(right_handed)
+                return "0,{},SetArmOrientation();"
+
+        device = OrientationDevice()
+        arm._device = device
+
+        result = arm.set_arm_orientation(1)
+
+        self.assertEqual(result, "0,{},SetArmOrientation();")
+        self.assertEqual(device.calls, [True])
+
+    def test_set_arm_orientation_rejects_values_other_than_zero_or_one(self) -> None:
+        arm = M1Pro.__new__(M1Pro)
+
+        with self.assertRaisesRegex(ValueError, "orientation must be 0 or 1"):
+            arm.set_arm_orientation(2)
+
+    def test_rotate_r_preserves_xyz_and_issues_one_direct_move(self) -> None:
+        arm = M1Pro.__new__(M1Pro)
+        current = PoseXYZR(240.5, -77.5, 25.0, -180.0)
+        moves: list[tuple[PoseXYZR, dict[str, object]]] = []
+        arm.get_pose = lambda frame="robot": current
+
+        def record_move(target, **kwargs):
+            moves.append((target, kwargs))
+            return target
+
+        arm._move = record_move
+
+        result = arm.rotate_r(r=-170.0, speed_factor=0.25)
+
+        self.assertEqual(result, PoseXYZR(240.5, -77.5, 25.0, -170.0))
+        self.assertEqual(
+            moves,
+            [
+                (
+                    PoseXYZR(240.5, -77.5, 25.0, -170.0),
+                    {"frame": "robot", "speed_factor": 0.25, "blocking": True},
+                )
+            ],
+        )
+
+    def test_move_vertical_to_preserves_xyr_and_issues_one_direct_move(self) -> None:
+        arm = M1Pro.__new__(M1Pro)
+        current = PoseXYZR(127.0, -330.5, 10.0, -22.5)
+        moves: list[tuple[PoseXYZR, dict[str, object]]] = []
+        arm.get_pose = lambda frame="robot": current
+
+        def record_move(target, **kwargs):
+            moves.append((target, kwargs))
+            return target
+
+        arm._move = record_move
+
+        result = arm.move_vertical_to(z=30.0, speed_factor=0.25)
+
+        self.assertEqual(result, PoseXYZR(127.0, -330.5, 30.0, -22.5))
+        self.assertEqual(
+            moves,
+            [
+                (
+                    PoseXYZR(127.0, -330.5, 30.0, -22.5),
+                    {"frame": "robot", "speed_factor": 0.25, "blocking": True},
+                )
+            ],
+        )
 
     def test_safe_move_lifts_before_switching_target_orientation(self) -> None:
         arm = M1Pro.__new__(M1Pro)
@@ -182,6 +259,98 @@ class VerifiedMotionTests(unittest.TestCase):
             arm.safe_move({"x": 131, "y": -231, "z": 240, "r": -20})
 
         self.assertEqual(device.orientation_calls, [False])
+
+    def test_pick_and_place_uses_approved_composite_sequence_and_speeds(self) -> None:
+        arm = M1Pro.__new__(M1Pro)
+        arm._safe_height = 240.0
+        trace: list[tuple[str, object]] = []
+
+        class TraceDevice:
+            connected = True
+
+            def SetArmOrientation(self, right_handed: bool) -> str:
+                trace.append(("orientation", right_handed))
+                return "0,{},SetArmOrientation();"
+
+        arm._device = TraceDevice()  # type: ignore[assignment]
+        poses = iter([
+            PoseXYZR(200, 0, 100, -22.5),
+            PoseXYZR(131.33, -211.3333333, 109, -22.5),
+        ])
+        arm.get_pose = lambda frame="robot": next(poses)
+        arm.close_gripper = lambda: (trace.append(("gripper", "close")) or "ok")  # type: ignore[method-assign]
+        arm.open_gripper = lambda: (trace.append(("gripper", "open")) or "ok")  # type: ignore[method-assign]
+
+        def record_move(target, **kwargs):
+            trace.append(("move", (target, kwargs.get("speed_factor"))))
+            return target
+
+        arm._move = record_move
+        source = {"x": 213.332206541, "y": -90.224425275, "z": 27, "r": -22.5}
+        destination = {"x": 131.33, "y": -211.3333333, "z": 9, "r": -22.5}
+
+        with patch("dobot_driver.m1pro.time.sleep") as sleep:
+            result = arm.pick_and_place(source=source, destination=destination)
+
+        self.assertEqual(result, PoseXYZR(131.33, -211.3333333, 109, -22.5))
+        self.assertEqual(sleep.call_args_list, [call(1.0)] * 3)
+        self.assertEqual(
+            trace,
+            [
+                ("move", (PoseXYZR(200, 0, 240, -22.5), 0.50)),
+                ("orientation", False),
+                ("move", (PoseXYZR(213.332206541, -90.224425275, 240, -22.5), 0.90)),
+                ("move", (PoseXYZR(213.332206541, -90.224425275, 127, -22.5), 0.50)),
+                ("move", (PoseXYZR(213.332206541, -90.224425275, 27, -22.5), 0.05)),
+                ("gripper", "close"),
+                ("move", (PoseXYZR(213.332206541, -90.224425275, 127, -22.5), 0.05)),
+                ("move", (PoseXYZR(213.332206541, -90.224425275, 240, -22.5), 0.50)),
+                ("orientation", False),
+                ("move", (PoseXYZR(131.33, -211.3333333, 240, -22.5), 0.90)),
+                ("move", (PoseXYZR(131.33, -211.3333333, 109, -22.5), 0.50)),
+                ("move", (PoseXYZR(131.33, -211.3333333, 9, -22.5), 0.05)),
+                ("gripper", "open"),
+                ("move", (PoseXYZR(131.33, -211.3333333, 109, -22.5), 0.05)),
+            ],
+        )
+
+    def test_clear_error_accepts_minus_one_when_controller_reports_no_existing_error(self) -> None:
+        dashboard = DobotApiDashboard.__new__(DobotApiDashboard)
+        dashboard.ip = "192.0.2.1"
+        dashboard.port = 29999
+        dashboard.socket_dobot = 0
+        object.__setattr__(dashboard, "_DobotApi__globalLock", threading.Lock())
+        with (
+            patch.object(dashboard, "send_data"),
+            patch.object(dashboard, "wait_reply", return_value="-1,{},ClearError();"),
+        ):
+            self.assertEqual(dashboard.ClearError(), "-1,{},ClearError();")
+
+    def test_clear_error_rejects_other_nonzero_error_codes(self) -> None:
+        dashboard = DobotApiDashboard.__new__(DobotApiDashboard)
+        dashboard.ip = "192.0.2.1"
+        dashboard.port = 29999
+        dashboard.socket_dobot = 0
+        object.__setattr__(dashboard, "_DobotApi__globalLock", threading.Lock())
+        with (
+            patch.object(dashboard, "send_data"),
+            patch.object(dashboard, "wait_reply", return_value="-2,{},ClearError();"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "rejected 'ClearError\\(\\)'"):
+                dashboard.ClearError()
+
+    def test_other_dashboard_commands_still_reject_minus_one(self) -> None:
+        dashboard = DobotApiDashboard.__new__(DobotApiDashboard)
+        dashboard.ip = "192.0.2.1"
+        dashboard.port = 29999
+        dashboard.socket_dobot = 0
+        object.__setattr__(dashboard, "_DobotApi__globalLock", threading.Lock())
+        with (
+            patch.object(dashboard, "send_data"),
+            patch.object(dashboard, "wait_reply", return_value="-1,{},DisableRobot();"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "rejected 'DisableRobot\\(\\)'"):
+                dashboard.DisableRobot()
 
     def test_reset_clears_controller_error_before_disabling_robot(self) -> None:
         client = DobotDeviceClient.__new__(DobotDeviceClient)

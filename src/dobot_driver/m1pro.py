@@ -115,6 +115,26 @@ class M1Pro:
         """
         self._device.reset()
 
+    def set_arm_orientation(self, orientation: int) -> str:
+        """Set the controller arm-orientation branch.
+
+        Args:
+            orientation (required): Controller arm orientation, either `0` or `1`.
+
+        Returns:
+            str: The raw controller response.
+
+        Raises:
+            ValueError: If orientation is not `0` or `1`.
+            RuntimeError: If the dashboard API is not connected.
+        """
+        if orientation not in (0, 1):
+            raise ValueError("orientation must be 0 or 1.")
+        response = self._device.SetArmOrientation(right_handed=bool(orientation))
+        if response is None:
+            raise RuntimeError("dashboard_api is not connected")
+        return response
+
     def set_speed_factor(self, speed_factor: float) -> None:
         """Set the motion speed scaling factor.
 
@@ -153,6 +173,40 @@ class M1Pro:
         """
         values = self._parse_numeric_response(self._device.GetAngle(), minimum=6, take_last=6)
         return tuple(values[-6:])  # type: ignore[return-value]
+
+    def rotate_r(
+        self,
+        *,
+        r: float,
+        speed_factor: float | None = 0.25,
+        blocking: bool = True,
+    ) -> PoseXYZR:
+        """Rotate only the wrist R axis while preserving measured X, Y, and Z."""
+        current = self.get_pose(frame="robot")
+        target = PoseXYZR(current.x, current.y, current.z, r)
+        return self._move(
+            target,
+            frame="robot",
+            speed_factor=speed_factor,
+            blocking=blocking,
+        )
+
+    def move_vertical_to(
+        self,
+        *,
+        z: float,
+        speed_factor: float | None = 0.25,
+        blocking: bool = True,
+    ) -> PoseXYZR:
+        """Move directly to an absolute robot-frame Z while preserving measured X, Y, and R."""
+        current = self.get_pose(frame="robot")
+        target = PoseXYZR(current.x, current.y, float(z), current.r)
+        return self._move(
+            target,
+            frame="robot",
+            speed_factor=speed_factor,
+            blocking=blocking,
+        )
 
     def safe_move(
         self,
@@ -265,6 +319,94 @@ class M1Pro:
         final_pose = self.safe_move(position, frame="robot")
         self.open_gripper()
         return final_pose
+
+    def pick_and_place(
+        self,
+        *,
+        source: Mapping[str, float],
+        destination: Mapping[str, float],
+        safe_z: float = 240.0,
+        staging_offset: float = 100.0,
+        speed_factor_up: float = 0.50,
+        speed_factor_lateral: float = 0.90,
+        speed_factor_down: float = 0.50,
+        speed_factor_final: float = 0.05,
+        dwell_seconds: float = 1.0,
+    ) -> PoseXYZR:
+        """Run the approved staged pick-and-place composite operation.
+
+        The sequence uses direct, controller-verified movement segments so a slow
+        pick/place descent does not silently route back through safe height.
+        Source and destination poses are interpreted in robot coordinates.
+        """
+        source_pose = self._to_pose_xyzr(source)
+        destination_pose = self._to_pose_xyzr(destination)
+        source_stage = PoseXYZR(
+            source_pose.x, source_pose.y, source_pose.z + staging_offset, source_pose.r
+        )
+        destination_stage = PoseXYZR(
+            destination_pose.x,
+            destination_pose.y,
+            destination_pose.z + staging_offset,
+            destination_pose.r,
+        )
+        source_safe = PoseXYZR(source_pose.x, source_pose.y, safe_z, -22.5)
+        destination_safe = PoseXYZR(destination_pose.x, destination_pose.y, safe_z, -22.5)
+
+        if staging_offset <= 0:
+            raise ValueError("staging_offset must be greater than zero.")
+        if dwell_seconds < 0:
+            raise ValueError("dwell_seconds must be non-negative.")
+        if source_stage.z > safe_z or destination_stage.z > safe_z:
+            raise ValueError("Source and destination staging heights must not exceed safe_z.")
+        for pose in (
+            source_pose,
+            destination_pose,
+            source_stage,
+            destination_stage,
+            source_safe,
+            destination_safe,
+        ):
+            self._validate_robot_pose(pose)
+
+        current = self.get_pose(frame="robot")
+        if current.z < safe_z:
+            self._move(
+                PoseXYZR(current.x, current.y, safe_z, current.r),
+                frame="robot",
+                speed_factor=speed_factor_up,
+            )
+
+        self._device.SetArmOrientation(right_handed=source_pose.y > 0)
+        self._move(source_safe, frame="robot", speed_factor=speed_factor_lateral)
+        self._move(source_stage, frame="robot", speed_factor=speed_factor_down)
+        self._move(source_pose, frame="robot", speed_factor=speed_factor_final)
+        self.close_gripper()
+        time.sleep(dwell_seconds)
+        self._move(source_stage, frame="robot", speed_factor=speed_factor_final)
+        self._move(source_safe, frame="robot", speed_factor=speed_factor_up)
+
+        self._device.SetArmOrientation(right_handed=destination_pose.y > 0)
+        self._move(destination_safe, frame="robot", speed_factor=speed_factor_lateral)
+        self._move(destination_stage, frame="robot", speed_factor=speed_factor_down)
+        self._move(destination_pose, frame="robot", speed_factor=speed_factor_final)
+        time.sleep(dwell_seconds)
+        self.open_gripper()
+        time.sleep(dwell_seconds)
+        self._move(destination_stage, frame="robot", speed_factor=speed_factor_final)
+
+        measured_pose = self.get_pose(frame="robot")
+        if not all(
+            math.isclose(actual, expected, abs_tol=1.0)
+            for actual, expected in zip(
+                measured_pose.as_tuple(), destination_stage.as_tuple(), strict=True
+            )
+        ):
+            raise RuntimeError(
+                "Dobot composite final pose verification failed: "
+                f"expected={destination_stage}, measured={measured_pose}"
+            )
+        return measured_pose
 
     def __exit__(self, exc_type, exc, tb) -> None:
         """Disconnect the device when leaving a context manager.

@@ -54,7 +54,7 @@ async def main():
     logger.info("Full config: %s", config.model_dump())
 
     logger.info("Initializing dobot machine driver")
-    driver = M1Pro(dobot_ip=config.dobot_ip, home_position=[200, 0, 240, 20])
+    driver = M1Pro(dobot_ip=config.dobot_ip, home_position=[200, 0, 240, -22.5])
     logger.info("Dobot machine initialized successfully")
 
     logger.info("Connecting to NATS at %s", config.nats_servers)

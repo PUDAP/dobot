@@ -26,7 +26,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DEFAULT_HOME_POSITION = [200, 0, 240, 20]
+DEFAULT_HOME_POSITION = [200, 0, 240, -22.5]
 TEST_MOVE_POSITION = {"x": 131, "y": -231, "z": 240, "r": -20}
 
 
@@ -49,7 +49,7 @@ def parse_args() -> argparse.Namespace:
         type=float,
         metavar=("X", "Y", "Z", "R"),
         default=DEFAULT_HOME_POSITION,
-        help="Robot-frame home pose as X Y Z R (default: 200 0 240 20).",
+        help="Robot-frame home pose as X Y Z R (default: 200 0 240 -22.5).",
     )
     return parser.parse_args()
 
