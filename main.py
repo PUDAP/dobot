@@ -63,16 +63,7 @@ async def main():
         machine_id=config.machine_id,
     )
 
-    async def telemetry_handler():
-        await edge_nats_client.publish_heartbeat()
-        await edge_nats_client.publish_health({"cpu": 45.2, "mem": 60.1, "temp": 35.0})
-
-    runner = EdgeRunner(
-        nats_client=edge_nats_client,
-        machine_driver=driver,
-        telemetry_handler=telemetry_handler,
-        state_handler=lambda: {},
-    )
+    runner = EdgeRunner(nats_client=edge_nats_client, machine_driver=driver)
     await runner.connect()
     logger.info("NATS client initialized successfully")
     logger.info(

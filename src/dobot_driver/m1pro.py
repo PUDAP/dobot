@@ -5,6 +5,8 @@ import math
 import time
 from typing import Any, Mapping, Sequence
 
+from puda import command, machine_state, safety, tlm_stream
+
 from .dobot_client import (
     PoseXYZR,
     DobotDeviceClient,
@@ -18,7 +20,10 @@ DEFAULT_TOOL_OFFSET = [[0, 0, -232], [122.11611149, 0, 0]]
 DEFAULT_SAFE_HEIGHT = 240.0
 
 class M1Pro:
-    """Standalone M1 Pro controller using Dobot's TCP/IP API directly."""
+    """Dobot M1 Pro robot arm that moves in Cartesian space and picks and places labware with a gripper.
+
+    Standalone controller using Dobot's TCP/IP API directly.
+    """
 
     # Public API
 
@@ -65,6 +70,17 @@ class M1Pro:
         self._validate_robot_pose(self._home_position)
         self._connect()
 
+    @machine_state
+    def snapshot(self) -> dict:
+        """Return cached controller settings (never reads from the device)."""
+        return {"speed_factor": self._speed_factor}
+
+    @tlm_stream(interval=3.0, name="pose")
+    def get_position(self) -> dict[str, float]:
+        """Current robot-frame Cartesian pose (x, y, z, r) of the arm."""
+        pose = self.get_pose(frame="robot")
+        return {"x": pose.x, "y": pose.y, "z": pose.z, "r": pose.r}
+
     def __enter__(self) -> "M1Pro":
         """Connect the device for use in a context manager.
 
@@ -77,6 +93,7 @@ class M1Pro:
         self._connect()
         return self
 
+    @command
     def open_gripper(self) -> str:
         """Open the gripper.
 
@@ -92,6 +109,11 @@ class M1Pro:
         self._logger.debug("Opening gripper")
         return self._device.DOExecute(1, 0)
 
+    @command
+    @safety(
+        summary='Closes the gripper.',
+        hazards=["pinch point"],
+    )
     def close_gripper(self) -> str:
         """Close the gripper.
 
@@ -107,6 +129,7 @@ class M1Pro:
         self._logger.debug("Closing gripper")
         return self._device.DOExecute(1, 1)
 
+    @command
     def reset(self) -> None:
         """Reset the underlying device controller.
 
@@ -115,6 +138,7 @@ class M1Pro:
         """
         self._device.reset()
 
+    @command
     def set_arm_orientation(self, orientation: int) -> str:
         """Set the controller arm-orientation branch.
 
@@ -135,6 +159,7 @@ class M1Pro:
             raise RuntimeError("dashboard_api is not connected")
         return response
 
+    @command
     def set_speed_factor(self, speed_factor: float) -> None:
         """Set the motion speed scaling factor.
 
@@ -146,6 +171,7 @@ class M1Pro:
         self._speed_factor = float(speed_factor)
         self._device.SpeedFactor(max(1, min(100, int(round(speed_factor * 100)))))
 
+    @command
     def get_pose(self, *, frame: str = "robot") -> PoseXYZR:
         """Get the current Cartesian pose.
 
@@ -162,6 +188,7 @@ class M1Pro:
             return self._robot_to_work_tool(robot_pose)
         raise ValueError("frame must be either 'robot' or 'work'.")
 
+    @command
     def get_joint_angles(self) -> tuple[float, float, float, float, float, float]:
         """Get the current robot joint angles.
 
@@ -174,6 +201,12 @@ class M1Pro:
         values = self._parse_numeric_response(self._device.GetAngle(), minimum=6, take_last=6)
         return tuple(values[-6:])  # type: ignore[return-value]
 
+    @command
+    @safety(
+        summary='Rotates the wrist R axis in place.',
+        hazards=["wrist motion"],
+        requires='Nothing is within reach of the gripper.',
+    )
     def rotate_r(
         self,
         *,
@@ -191,6 +224,12 @@ class M1Pro:
             blocking=blocking,
         )
 
+    @command
+    @safety(
+        summary='Moves the arm straight to an absolute Z height.',
+        hazards=["arm motion", "collision with labware"],
+        requires='Nothing is in the vertical path.',
+    )
     def move_vertical_to(
         self,
         *,
@@ -208,6 +247,12 @@ class M1Pro:
             blocking=blocking,
         )
 
+    @command
+    @safety(
+        summary='Moves the arm to a pose via a vertical-lateral-vertical path.',
+        hazards=["arm motion", "collision with labware or people"],
+        requires='Workspace is clear and the target pose is within reach.',
+    )
     def safe_move(
         self,
         position: Mapping[str, float],
@@ -270,6 +315,12 @@ class M1Pro:
 
         return robot_target
 
+    @command
+    @safety(
+        summary='Raises the arm to safe height, opens the gripper and moves to the home pose.',
+        hazards=["arm motion", "releases any held object"],
+        requires='Workspace is clear.',
+    )
     def home(self, *, speed_factor: float | None = None) -> PoseXYZR:
         """Move the robot to its configured home pose.
 
@@ -285,6 +336,12 @@ class M1Pro:
             self._move(waypoint, frame="robot", speed_factor=speed_factor)
         return self._move(self._home_position, frame="robot", speed_factor=speed_factor)
 
+    @command
+    @safety(
+        summary='Moves to a pick position and closes the gripper.',
+        hazards=["arm motion", "gripper pinch"],
+        requires='Workspace is clear and the target pose is within reach.',
+    )
     def pick_from(
         self,
         *,
@@ -303,6 +360,12 @@ class M1Pro:
         self.close_gripper()
         return final_pose
 
+    @command
+    @safety(
+        summary='Moves to a place position and opens the gripper.',
+        hazards=["arm motion", "dropped object"],
+        requires='Workspace is clear and the target pose is within reach.',
+    )
     def place_to(
         self,
         *,
@@ -320,6 +383,12 @@ class M1Pro:
         self.open_gripper()
         return final_pose
 
+    @command
+    @safety(
+        summary='Runs a staged pick from source and place to destination.',
+        hazards=["arm motion", "gripper pinch", "dropped object"],
+        requires='Workspace is clear and both poses are within reach.',
+    )
     def pick_and_place(
         self,
         *,

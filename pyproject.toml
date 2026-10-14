@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "numpy>=2.4.3",
-    "puda>=0.0.16",
+    "puda>=0.0.18",
     "pydantic-settings>=2.12.0",
 ]
 
