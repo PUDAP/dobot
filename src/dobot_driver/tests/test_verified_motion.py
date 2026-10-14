@@ -314,6 +314,47 @@ class VerifiedMotionTests(unittest.TestCase):
             ],
         )
 
+    def test_pick_and_place_rejects_invalid_speed_factors_before_device_access(self) -> None:
+        arm = M1Pro.__new__(M1Pro)
+
+        def unexpected_device_access(*args, **kwargs):
+            raise AssertionError("invalid input must fail before device access")
+
+        arm.get_pose = unexpected_device_access
+        arm._move = unexpected_device_access
+        source = {"x": 213.0, "y": -90.0, "z": 27.0, "r": -22.5}
+        destination = {"x": 131.0, "y": -211.0, "z": 9.0, "r": -22.5}
+
+        for name, value in (
+            ("speed_factor_up", 0.0),
+            ("speed_factor_lateral", 1.1),
+            ("speed_factor_down", float("nan")),
+            ("speed_factor_final", float("inf")),
+        ):
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(ValueError, name):
+                    arm.pick_and_place(
+                        source=source,
+                        destination=destination,
+                        **{name: value},
+                    )
+
+    def test_pick_and_place_rejects_non_finite_dwell_before_device_access(self) -> None:
+        arm = M1Pro.__new__(M1Pro)
+
+        def unexpected_device_access(*args, **kwargs):
+            raise AssertionError("invalid input must fail before device access")
+
+        arm.get_pose = unexpected_device_access
+        arm._move = unexpected_device_access
+
+        with self.assertRaisesRegex(ValueError, "dwell_seconds"):
+            arm.pick_and_place(
+                source={"x": 213.0, "y": -90.0, "z": 27.0, "r": -22.5},
+                destination={"x": 131.0, "y": -211.0, "z": 9.0, "r": -22.5},
+                dwell_seconds=float("nan"),
+            )
+
     def test_clear_error_accepts_minus_one_when_controller_reports_no_existing_error(self) -> None:
         dashboard = DobotApiDashboard.__new__(DobotApiDashboard)
         dashboard.ip = "192.0.2.1"

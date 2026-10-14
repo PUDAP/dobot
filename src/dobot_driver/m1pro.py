@@ -339,6 +339,18 @@ class M1Pro:
         pick/place descent does not silently route back through safe height.
         Source and destination poses are interpreted in robot coordinates.
         """
+        speed_factors = {
+            "speed_factor_up": speed_factor_up,
+            "speed_factor_lateral": speed_factor_lateral,
+            "speed_factor_down": speed_factor_down,
+            "speed_factor_final": speed_factor_final,
+        }
+        for name, value in speed_factors.items():
+            if not math.isfinite(value) or not 0.0 < value <= 1.0:
+                raise ValueError(f"{name} must be finite and in the range (0.0, 1.0].")
+        if not math.isfinite(dwell_seconds) or dwell_seconds < 0:
+            raise ValueError("dwell_seconds must be finite and non-negative.")
+
         source_pose = self._to_pose_xyzr(source)
         destination_pose = self._to_pose_xyzr(destination)
         source_stage = PoseXYZR(
