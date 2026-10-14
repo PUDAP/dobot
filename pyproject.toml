@@ -1,18 +1,2 @@
-[project]
-name = "dobot"
-version = "0.1.0"
-description = "Dobot M1 Pro driver and edge service"
-readme = "README.md"
-requires-python = ">=3.14"
-dependencies = [
-    "numpy>=2.4.3",
-    "puda>=0.0.18",
-    "pydantic-settings>=2.12.0",
-]
-
-[build-system]
-requires = ["hatchling>=1.26"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/dobot_driver"]
+[tool.uv.workspace]
+members = ["driver", "dobot-left-edge", "dobot-right-edge"]

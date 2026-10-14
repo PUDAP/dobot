@@ -7,6 +7,13 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
+[manifest]
+members = [
+    "dobot-drivers",
+    "dobot-left-edge",
+    "dobot-right-edge",
+]
+
 [[package]]
 name = "annotated-types"
 version = "0.7.0"
@@ -17,18 +24,50 @@ wheels = [
 ]
 
 [[package]]
-name = "dobot"
+name = "dobot-drivers"
 version = "0.1.0"
-source = { editable = "." }
+source = { editable = "driver" }
 dependencies = [
     { name = "numpy" },
+    { name = "puda" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=2.4.3" },
+    { name = "puda", specifier = ">=0.0.18" },
+]
+
+[[package]]
+name = "dobot-left-edge"
+version = "0.1.0"
+source = { virtual = "dobot-left-edge" }
+dependencies = [
+    { name = "dobot-drivers" },
     { name = "puda" },
     { name = "pydantic-settings" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "numpy", specifier = ">=2.4.3" },
+    { name = "dobot-drivers", editable = "driver" },
+    { name = "puda", specifier = ">=0.0.18" },
+    { name = "pydantic-settings", specifier = ">=2.12.0" },
+]
+
+[[package]]
+name = "dobot-right-edge"
+version = "0.1.0"
+source = { virtual = "dobot-right-edge" }
+dependencies = [
+    { name = "dobot-drivers" },
+    { name = "puda" },
+    { name = "pydantic-settings" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dobot-drivers", editable = "driver" },
     { name = "puda", specifier = ">=0.0.18" },
     { name = "pydantic-settings", specifier = ">=2.12.0" },
 ]

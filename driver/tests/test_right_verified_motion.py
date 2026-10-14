@@ -5,9 +5,9 @@ import threading
 import unittest
 from unittest.mock import call, patch
 
-from dobot_driver.dobot_api import DobotApiDashboard
-from dobot_driver.dobot_client import DobotDeviceClient, PoseXYZR
-from dobot_driver.m1pro import M1Pro
+from dobot_drivers.dobot_api import DobotApiDashboard
+from dobot_drivers.dobot_client import DobotDeviceClient, PoseXYZR
+from dobot_drivers.m1pro_right import M1ProRight
 
 
 class FakeDevice:
@@ -75,7 +75,7 @@ class GripperProbeDevice:
 
 class VerifiedMotionTests(unittest.TestCase):
     def test_gripper_output_polarity_matches_physical_hardware(self) -> None:
-        arm = M1Pro.__new__(M1Pro)
+        arm = M1ProRight.__new__(M1ProRight)
         device = GripperProbeDevice()
         arm._device = device
         arm._logger = logging.getLogger("test")
@@ -86,7 +86,7 @@ class VerifiedMotionTests(unittest.TestCase):
         self.assertEqual(device.calls, [(1, 0), (1, 1)])
 
     def test_set_arm_orientation_accepts_one_and_sends_right_handed(self) -> None:
-        arm = M1Pro.__new__(M1Pro)
+        arm = M1ProRight.__new__(M1ProRight)
 
         class OrientationDevice:
             def __init__(self) -> None:
@@ -105,13 +105,13 @@ class VerifiedMotionTests(unittest.TestCase):
         self.assertEqual(device.calls, [True])
 
     def test_set_arm_orientation_rejects_values_other_than_zero_or_one(self) -> None:
-        arm = M1Pro.__new__(M1Pro)
+        arm = M1ProRight.__new__(M1ProRight)
 
         with self.assertRaisesRegex(ValueError, "orientation must be 0 or 1"):
             arm.set_arm_orientation(2)
 
     def test_rotate_r_preserves_xyz_and_issues_one_direct_move(self) -> None:
-        arm = M1Pro.__new__(M1Pro)
+        arm = M1ProRight.__new__(M1ProRight)
         current = PoseXYZR(240.5, -77.5, 25.0, -180.0)
         moves: list[tuple[PoseXYZR, dict[str, object]]] = []
         arm.get_pose = lambda frame="robot": current
@@ -136,7 +136,7 @@ class VerifiedMotionTests(unittest.TestCase):
         )
 
     def test_move_vertical_to_preserves_xyr_and_issues_one_direct_move(self) -> None:
-        arm = M1Pro.__new__(M1Pro)
+        arm = M1ProRight.__new__(M1ProRight)
         current = PoseXYZR(127.0, -330.5, 10.0, -22.5)
         moves: list[tuple[PoseXYZR, dict[str, object]]] = []
         arm.get_pose = lambda frame="robot": current
@@ -161,7 +161,7 @@ class VerifiedMotionTests(unittest.TestCase):
         )
 
     def test_safe_move_lifts_before_switching_target_orientation(self) -> None:
-        arm = M1Pro.__new__(M1Pro)
+        arm = M1ProRight.__new__(M1ProRight)
         trace: list[tuple[str, object]] = []
 
         class TraceDevice:
@@ -193,7 +193,7 @@ class VerifiedMotionTests(unittest.TestCase):
         )
 
     def test_safe_move_defaults_to_075_lateral_and_025_vertical_speed_factors(self) -> None:
-        arm = M1Pro.__new__(M1Pro)
+        arm = M1ProRight.__new__(M1ProRight)
         speed_factors: list[float | None] = []
 
         class TraceDevice:
@@ -215,7 +215,7 @@ class VerifiedMotionTests(unittest.TestCase):
         self.assertEqual(speed_factors, [0.25, 0.75, 0.25])
 
     def test_pick_from_uses_safe_move_result_without_an_extra_speed_override(self) -> None:
-        arm = M1Pro.__new__(M1Pro)
+        arm = M1ProRight.__new__(M1ProRight)
         safe_pose = PoseXYZR(131, -231, 14, -20)
         gripper_calls: list[str] = []
         arm.safe_move = lambda position, frame="robot": safe_pose  # type: ignore[method-assign]
@@ -232,7 +232,7 @@ class VerifiedMotionTests(unittest.TestCase):
         self.assertEqual(gripper_calls, ["open", "close"])
 
     def test_place_to_uses_safe_move_result_without_an_extra_speed_override(self) -> None:
-        arm = M1Pro.__new__(M1Pro)
+        arm = M1ProRight.__new__(M1ProRight)
         safe_pose = PoseXYZR(57, 275, 21, -20)
         gripper_calls: list[str] = []
         arm.safe_move = lambda position, frame="robot": safe_pose  # type: ignore[method-assign]
@@ -248,7 +248,7 @@ class VerifiedMotionTests(unittest.TestCase):
         self.assertEqual(gripper_calls, ["open"])
 
     def test_negative_y_safe_move_selects_left_handed_orientation(self) -> None:
-        arm = M1Pro.__new__(M1Pro)
+        arm = M1ProRight.__new__(M1ProRight)
         device = OrientationProbeDevice()
         arm._device = device
         arm._safe_height = 240.0
@@ -261,7 +261,7 @@ class VerifiedMotionTests(unittest.TestCase):
         self.assertEqual(device.orientation_calls, [False])
 
     def test_pick_and_place_uses_approved_composite_sequence_and_speeds(self) -> None:
-        arm = M1Pro.__new__(M1Pro)
+        arm = M1ProRight.__new__(M1ProRight)
         arm._safe_height = 240.0
         trace: list[tuple[str, object]] = []
 
@@ -289,7 +289,7 @@ class VerifiedMotionTests(unittest.TestCase):
         source = {"x": 213.332206541, "y": -90.224425275, "z": 27, "r": -22.5}
         destination = {"x": 131.33, "y": -211.3333333, "z": 9, "r": -22.5}
 
-        with patch("dobot_driver.m1pro.time.sleep") as sleep:
+        with patch("dobot_drivers.m1pro_right.time.sleep") as sleep:
             result = arm.pick_and_place(source=source, destination=destination)
 
         self.assertEqual(result, PoseXYZR(131.33, -211.3333333, 109, -22.5))
@@ -315,7 +315,7 @@ class VerifiedMotionTests(unittest.TestCase):
         )
 
     def test_pick_and_place_rejects_invalid_speed_factors_before_device_access(self) -> None:
-        arm = M1Pro.__new__(M1Pro)
+        arm = M1ProRight.__new__(M1ProRight)
 
         def unexpected_device_access(*args, **kwargs):
             raise AssertionError("invalid input must fail before device access")
@@ -340,7 +340,7 @@ class VerifiedMotionTests(unittest.TestCase):
                     )
 
     def test_pick_and_place_rejects_non_finite_dwell_before_device_access(self) -> None:
-        arm = M1Pro.__new__(M1Pro)
+        arm = M1ProRight.__new__(M1ProRight)
 
         def unexpected_device_access(*args, **kwargs):
             raise AssertionError("invalid input must fail before device access")
@@ -407,7 +407,7 @@ class VerifiedMotionTests(unittest.TestCase):
         sleep.assert_called_once_with(0.5)
 
     def test_blocking_move_raises_when_measured_pose_does_not_reach_target(self) -> None:
-        arm = M1Pro.__new__(M1Pro)
+        arm = M1ProRight.__new__(M1ProRight)
         arm._device = FakeDevice(
             [
                 "0,{200,0,240,20,0,0},GetPose();",

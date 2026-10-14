@@ -4,11 +4,11 @@
 The Dobot controller accepts only one TCP client at a time. Stop the edge
 service first if it is running::
 
-    docker stop dobot-edge
+    docker stop dobot-left-edge
 
 Run from the repo root::
 
-    DOBOT_IP=192.168.2.6 uv run python src/dobot_driver/tests/test_home.py
+    DOBOT_IP=192.168.2.6 uv run python driver/tests/test_left_home.py
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import logging
 import os
 import sys
 
-from dobot_driver import M1Pro
+from dobot_drivers import M1ProLeft
 
 logging.basicConfig(
     level=logging.INFO,
@@ -59,7 +59,7 @@ def main() -> int:
     logger.info("Connecting to Dobot at %s", args.ip)
 
     try:
-        with M1Pro(
+        with M1ProLeft(
             dobot_ip=args.ip,
             home_position=args.home_position,
         ) as arm:

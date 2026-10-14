@@ -1,0 +1,17 @@
+services:
+  dobot-left:
+    build:
+      context: ..
+      dockerfile: dobot-left-edge/Dockerfile
+    image: ghcr.io/pudap/dobot-left-edge:latest
+    container_name: dobot-left-edge
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./.env:/app/dobot-left-edge/.env:ro
+    healthcheck:
+      test: ["CMD", "uv", "run", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

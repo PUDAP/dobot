@@ -1,0 +1,14 @@
+[project]
+name = "dobot-right-edge"
+version = "0.1.0"
+description = "PUDA edge service for the right Dobot M1 Pro"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "dobot-drivers",
+    "puda>=0.0.18",
+    "pydantic-settings>=2.12.0",
+]
+
+[tool.uv.sources]
+dobot-drivers = { workspace = true }

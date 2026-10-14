@@ -1,86 +1,82 @@
-# dobot
+# Dobot
 
-Dobot M1 Pro driver and edge service.
+Monorepo for the left and right Dobot M1 Pro drivers and PUDA edge services.
 
-## What It Does
+## Packages
 
-- Runs the dobot machine edge service.
-- Connects to NATS and translates commands into machine actions.
-- Communicates with the dobot device over the network (IP).
+- `driver` — shared `dobot-drivers` package exporting `M1ProLeft` and `M1ProRight`
+- `dobot-left-edge` — PUDA edge service for machine `dobot-left`
+- `dobot-right-edge` — PUDA edge service for machine `dobot-right`
 
-## Prerequisites
+The edge services depend on the shared driver workspace package. Driver tests
+and development notebooks are kept under `driver/tests`.
 
-- Docker and Docker Compose installed
-- Python 3.14+ and `uv` (for baremetal mode)
-- dobot device reachable on the network
+## Configure
 
-## Environment Setup
+Create an environment file for each edge:
 
-From repo root:
-
-```bash
-cp .env.example .env
+```powershell
+Copy-Item dobot-left-edge\.env.example dobot-left-edge\.env
+Copy-Item dobot-right-edge\.env.example dobot-right-edge\.env
 ```
 
-Edit `.env` and configure:
+Set these values in each `.env`:
 
-- `MACHINE_ID`
-- `NATS_SERVERS`
-- `DOBOT_IP`
+- `MACHINE_ID` — must be unique (`dobot-left` or `dobot-right`)
+- `NATS_SERVERS` — comma-separated NATS server URLs
+- `DOBOT_IP` — IP address of the corresponding robot
 
-## Run With Docker (Recommended)
+The example files use `192.168.2.6` for the left robot and `192.168.2.7` for
+the right robot. Update them to match the actual controllers.
 
-All commands below are run from repo root.
+## Run on Windows
 
-Build and start:
+```powershell
+cd dobot-left-edge
+.\start_edge.bat
+```
 
-```bash
-docker compose up -d --build
+In another terminal:
+
+```powershell
+cd dobot-right-edge
+.\start_edge.bat
+```
+
+## Run with uv
+
+From the repository root:
+
+```powershell
+uv sync --all-packages
+uv run --package dobot-left-edge python dobot-left-edge\main.py
+uv run --package dobot-right-edge python dobot-right-edge\main.py
+```
+
+## Run with Docker
+
+```powershell
+docker compose -f dobot-left-edge\compose.yml up -d --build
+docker compose -f dobot-right-edge\compose.yml up -d --build
 ```
 
 View logs:
 
-```bash
-docker compose logs -f
+```powershell
+docker compose -f dobot-left-edge\compose.yml logs -f
+docker compose -f dobot-right-edge\compose.yml logs -f
 ```
 
 Stop:
 
-```bash
-docker compose down
+```powershell
+docker compose -f dobot-left-edge\compose.yml down
+docker compose -f dobot-right-edge\compose.yml down
 ```
 
-## Run Baremetal (uv)
+## Test
 
-From repo root:
-
-```bash
-uv sync
-uv run python main.py
-```
-
-## Build and Push Image (GHCR)
-
-Login:
-
-```bash
-echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
-```
-
-Build:
-
-```bash
-docker compose build
-```
-
-Push:
-
-```bash
-docker push ghcr.io/PUDAP/dobot-edge:latest
-```
-
-Or with Compose:
-
-```bash
-docker compose push
+```powershell
+uv run --package dobot-drivers python -m unittest discover driver\tests -p "test_left_*.py"
+uv run --package dobot-drivers python -m unittest discover driver\tests -p "test_right_*.py"
 ```

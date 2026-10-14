@@ -19,7 +19,7 @@ DEFAULT_CALIBRATED_OFFSET = [[-374, 496.75, 254.2], [-89.11611149, 0, 0]]
 DEFAULT_TOOL_OFFSET = [[0, 0, -232], [122.11611149, 0, 0]]
 DEFAULT_SAFE_HEIGHT = 240.0
 
-class M1Pro:
+class M1ProRight:
     """Dobot M1 Pro robot arm that moves in Cartesian space and picks and places labware with a gripper.
 
     Standalone controller using Dobot's TCP/IP API directly.
@@ -81,14 +81,14 @@ class M1Pro:
         pose = self.get_pose(frame="robot")
         return {"x": pose.x, "y": pose.y, "z": pose.z, "r": pose.r}
 
-    def __enter__(self) -> "M1Pro":
+    def __enter__(self) -> "M1ProRight":
         """Connect the device for use in a context manager.
 
         Args:
             None.
 
         Returns:
-            M1Pro: The connected controller instance.
+            M1ProRight: The connected controller instance.
         """
         self._connect()
         return self

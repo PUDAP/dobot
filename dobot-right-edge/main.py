@@ -1,5 +1,5 @@
 """
-Main entry point for the machine edge service.
+Main entry point for the Dobot right edge service.
 
 This module provides the main event loop for the machine, handling command
 execution via NATS messaging, telemetry publishing, and connection management.
@@ -8,9 +8,10 @@ import asyncio
 import logging
 import sys
 import time
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from puda import EdgeNatsClient, EdgeRunner
-from dobot_driver import M1Pro
+from dobot_drivers import M1ProRight
 
 
 # Configure logging
@@ -19,7 +20,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     force=True,
 )
-logging.getLogger("dobot_driver").setLevel(logging.WARNING)
+logging.getLogger("dobot_drivers").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # Environment configuration
@@ -29,7 +30,7 @@ class Config(BaseSettings):
     dobot_ip: str
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=Path(__file__).resolve().parent / ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
@@ -54,7 +55,7 @@ async def main():
     logger.info("Full config: %s", config.model_dump())
 
     logger.info("Initializing dobot machine driver")
-    driver = M1Pro(dobot_ip=config.dobot_ip, home_position=[200, 0, 240, -22.5])
+    driver = M1ProRight(dobot_ip=config.dobot_ip, home_position=[200, 0, 240, -22.5])
     logger.info("Dobot machine initialized successfully")
 
     logger.info("Connecting to NATS at %s", config.nats_servers)
