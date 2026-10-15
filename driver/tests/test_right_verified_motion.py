@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 import unittest
-from unittest.mock import call, patch
+from unittest.mock import MagicMock, call, patch
 
 from dobot_drivers.dobot_api import DobotApiDashboard
 from dobot_drivers.dobot_client import DobotDeviceClient, PoseXYZR
@@ -405,6 +405,49 @@ class VerifiedMotionTests(unittest.TestCase):
 
         self.assertEqual(probe.calls, ["clear", "disable", "enable"])
         sleep.assert_called_once_with(0.5)
+
+    def test_connect_runs_startup_controller_commands_by_default(self) -> None:
+        client = DobotDeviceClient("192.0.2.1")
+        dashboard = MagicMock()
+        with (
+            patch("dobot_drivers.dobot_client.DobotApiDashboard", return_value=dashboard),
+            patch("dobot_drivers.dobot_client.DobotApiMove"),
+            patch.object(client, "reset") as reset,
+        ):
+            client.connect()
+
+        reset.assert_called_once_with()
+        dashboard.User.assert_called_once_with(0)
+        dashboard.Tool.assert_called_once_with(0)
+        self.assertTrue(client.connected)
+
+    def test_connect_skips_startup_controller_commands_when_auto_home_on_startup_is_false(self) -> None:
+        client = DobotDeviceClient("192.0.2.1")
+        dashboard = MagicMock()
+        with (
+            patch("dobot_drivers.dobot_client.DobotApiDashboard", return_value=dashboard),
+            patch("dobot_drivers.dobot_client.DobotApiMove"),
+            patch.object(client, "reset") as reset,
+        ):
+            client.connect(auto_home_on_startup=False)
+
+        reset.assert_not_called()
+        dashboard.User.assert_not_called()
+        dashboard.Tool.assert_not_called()
+        self.assertTrue(client.connected)
+
+    def test_driver_startup_skips_speed_factor_when_auto_home_on_startup_is_false(self) -> None:
+        arm = M1ProRight.__new__(M1ProRight)
+        arm._auto_home_on_startup = False
+        arm._logger = logging.getLogger("test")
+        arm._speed_factor = 0.2
+        arm._device = MagicMock()
+        arm.set_speed_factor = MagicMock()
+
+        arm._connect()
+
+        arm._device.connect.assert_called_once_with(auto_home_on_startup=False)
+        arm.set_speed_factor.assert_not_called()
 
     def test_blocking_move_raises_when_measured_pose_does_not_reach_target(self) -> None:
         arm = M1ProRight.__new__(M1ProRight)

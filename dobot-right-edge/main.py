@@ -28,6 +28,7 @@ class Config(BaseSettings):
     machine_id: str
     nats_servers: str
     dobot_ip: str
+    auto_home_on_startup: bool = True
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parent / ".env",
@@ -55,7 +56,11 @@ async def main():
     logger.info("Full config: %s", config.model_dump())
 
     logger.info("Initializing dobot machine driver")
-    driver = M1ProRight(dobot_ip=config.dobot_ip, home_position=[200, 0, 240, -22.5])
+    driver = M1ProRight(
+        dobot_ip=config.dobot_ip,
+        home_position=[200, 0, 240, -22.5],
+        auto_home_on_startup=config.auto_home_on_startup,
+    )
     logger.info("Dobot machine initialized successfully")
 
     logger.info("Connecting to NATS at %s", config.nats_servers)

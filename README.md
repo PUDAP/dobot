@@ -25,6 +25,7 @@ Set these values in each `.env`:
 - `MACHINE_ID` — must be unique (`dobot-left` or `dobot-right`)
 - `NATS_SERVERS` — comma-separated NATS server URLs
 - `DOBOT_IP` — IP address of the corresponding robot
+- `AUTO_HOME_ON_STARTUP` — send startup controller commands (`true` or `false`)
 
 The example files use `192.168.2.6` for the left robot and `192.168.2.7` for
 the right robot. Update them to match the actual controllers.

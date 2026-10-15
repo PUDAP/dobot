@@ -52,7 +52,7 @@ class DobotDeviceClient:
         self._sim_pose = PoseXYZR(300.0, 0.0, 240.0, -33.0)
         self._logger = logger.getChild(self.__class__.__name__)
 
-    def connect(self) -> None:
+    def connect(self, *, auto_home_on_startup: bool = True) -> None:
         if self.connected:
             return
         if self.simulation:
@@ -62,10 +62,13 @@ class DobotDeviceClient:
             self.host, DASHBOARD_PORT, timeout=self.timeout
         )
         self._connect_move_api()
-        self.reset()
-        if self.dashboard_api is not None:
-            self.dashboard_api.User(0)
-            self.dashboard_api.Tool(0)
+        if auto_home_on_startup:
+            self.reset()
+            if self.dashboard_api is not None:
+                self.dashboard_api.User(0)
+                self.dashboard_api.Tool(0)
+        else:
+            self._logger.info("Skipping startup controller commands by configuration")
         self.connected = True
 
     def disconnect(self) -> None:

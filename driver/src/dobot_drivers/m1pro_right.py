@@ -38,6 +38,7 @@ class M1ProRight:
         safe_height: float = DEFAULT_SAFE_HEIGHT,
         home_waypoints: Sequence[Any] | None = None,
         timeout: float = 10.0,
+        auto_home_on_startup: bool = True,
     ) -> None:
         """Initialize an M1 Pro controller.
 
@@ -50,6 +51,7 @@ class M1ProRight:
             safe_height (optional): Z height used for clearance moves before lateral travel.
             home_waypoints (optional): Intermediate robot-frame waypoints visited before the final home pose.
             timeout (optional): Socket timeout in seconds for device communication.
+            auto_home_on_startup (optional): When true, send the startup controller commands. When false, connect without them.
         """
         self._scale = float(scale)
         self._safe_height = float(safe_height)
@@ -62,6 +64,7 @@ class M1ProRight:
         ]
         self._logger = logger.getChild(self.__class__.__name__)
         self._logger.setLevel(logging.DEBUG)
+        self._auto_home_on_startup = bool(auto_home_on_startup)
         self._device = DobotDeviceClient(
             dobot_ip,
             timeout=timeout,
@@ -504,8 +507,11 @@ class M1ProRight:
     def _connect(self, *, retry_delay: float = 5.0) -> None:
         while True:
             try:
-                self._device.connect()
-                self.set_speed_factor(self._speed_factor)
+                self._device.connect(auto_home_on_startup=self._auto_home_on_startup)
+                if self._auto_home_on_startup:
+                    self.set_speed_factor(self._speed_factor)
+                else:
+                    self._logger.info("Skipping startup speed factor by configuration")
                 return
             except Exception as e:
                 self._logger.warning(
