@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "dobot-drivers",
-    "puda>=0.0.18",
+    "puda>=0.0.21",
     "pydantic-settings>=2.12.0",
 ]
 
