@@ -434,6 +434,7 @@ class VerifiedMotionTests(unittest.TestCase):
         reset.assert_not_called()
         dashboard.User.assert_not_called()
         dashboard.Tool.assert_not_called()
+        self.assertEqual(dashboard.mock_calls, [call.ClearError(), call.EnableRobot()])
         self.assertTrue(client.connected)
 
     def test_driver_startup_skips_speed_factor_when_auto_home_on_startup_is_false(self) -> None:

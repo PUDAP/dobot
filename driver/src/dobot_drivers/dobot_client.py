@@ -68,7 +68,14 @@ class DobotDeviceClient:
                 self.dashboard_api.User(0)
                 self.dashboard_api.Tool(0)
         else:
-            self._logger.info("Skipping startup controller commands by configuration")
+            # Testing often disables the homing startup sequence. The arm still
+            # has to be enabled or the status light stays blue and motion is ignored.
+            self.ClearError()
+            response = self.EnableRobot()
+            self._logger.info(
+                "Skipping startup controller commands; enabled robot: %s",
+                response,
+            )
         self.connected = True
 
     def disconnect(self) -> None:

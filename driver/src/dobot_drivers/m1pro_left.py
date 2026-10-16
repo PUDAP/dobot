@@ -51,7 +51,7 @@ class M1ProLeft:
             safe_height (optional): Z height used for clearance moves before lateral travel.
             home_waypoints (optional): Intermediate robot-frame waypoints visited before the final home pose.
             timeout (optional): Socket timeout in seconds for device communication.
-            auto_home_on_startup (optional): When true, send the startup controller commands. When false, connect without them.
+            auto_home_on_startup (optional): When true, send the startup controller commands. When false, skip them but still enable the arm.
         """
         self._scale = float(scale)
         self._safe_height = float(safe_height)
